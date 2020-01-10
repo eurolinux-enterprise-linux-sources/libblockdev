@@ -1,0 +1,145 @@
+#include <glib.h>
+#include <linux/fs.h>
+#include <stdio.h>
+#include <string.h>
+#include <blockdev/utils.h>
+#include <asm/dasd.h>
+#include <s390utils/vtoc.h>
+
+
+GQuark  bd_s390_error_quark (void);
+
+
+#define BD_S390_ERROR bd_s390_error_quark ()
+typedef enum {
+    BD_S390_ERROR_DEVICE,
+    BD_S390_ERROR_FORMAT_FAILED,
+    BD_S390_ERROR_DASDFMT,
+} BDS390Error;
+
+
+/**
+ * bd_s390_dasd_format:
+ * @dasd: dasd to format
+ * @extra: (allow-none) (array zero-terminated=1): extra options for the formatting (right now
+ *                                                 passed to the 'dasdfmt' utility)
+ * @error: (out): place to store error (if any)
+ *
+ * Returns: whether dasdfmt was successful or not
+ */
+gboolean  bd_s390_dasd_format (const gchar *dasd, const BDExtraArg **extra, GError **error);
+
+
+/**
+ * bd_s390_dasd_needs_format:
+ * @dasd: dasd to check, whether it needs dasdfmt run on it
+ * @error: (out): place to store error (if any)
+ *
+ * Returns: whether a dasd needs dasdfmt run against it
+ */
+gboolean  bd_s390_dasd_needs_format (const gchar *dasd, GError **error);
+
+
+/**
+ * bd_s390_dasd_online:
+ * @dasd: dasd to switch online
+ * @error: (out): place to store error (if any)
+ *
+ * Returns: whether a dasd was successfully switched online
+ */
+gboolean  bd_s390_dasd_online (const gchar *dasd, GError **error);
+
+
+/**
+ * bd_s390_dasd_is_Ldl:
+ * @dasd: dasd to check, whether it is LDL formatted
+ * @error: (out): place to store error (if any)
+ *
+ * Returns: whether a dasd is LDL formatted
+ */
+gboolean  bd_s390_dasd_is_ldl (const gchar *dasd, GError **error);
+
+
+/**
+ * bd_s390_dasd_is_fba:
+ * @dasd: dasd to check, whether it is FBA
+ * @error: (out): place to store error (if any)
+ *
+ * Returns: whether a dasd is FBA
+ */
+gboolean  bd_s390_dasd_is_fba (const gchar *dasd, GError **error);
+
+
+/**
+ * bd_s390_sanitize_dev_input:
+ * @dev a DASD or zFCP device number
+ * @error: (out): place to store error (if any)
+ *
+ * Returns: (transfer full): a synthesized dasd or zfcp device number
+ */
+gchar* bd_s390_sanitize_dev_input (const gchar *dev, GError **error);
+
+
+/**
+ * bd_s390_zfcp_sanitize_wwpn_input:
+ * @wwpn a zFCP WWPN identifier
+ * @error: (out): place to store error (if any)
+ *
+ * Returns: (transfer full): a synthesized zFCP WWPN
+ */
+gchar* bd_s390_zfcp_sanitize_wwpn_input (const gchar *wwpn, GError **error);
+
+
+/**
+ * bd_s390_zfcp_sanitize_lun_input:
+ * @lun a zFCP LUN identifier
+ * @error: (out): place to store error (if any)
+ *
+ * Returns: (transfer full): a synthesized zFCP LUN
+ */
+gchar* bd_s390_zfcp_sanitize_lun_input (const gchar *lun, GError **error);
+
+
+/**
+ * bd_s390_zfcp_online:
+ * @devno a zFCP device number
+ * @wwpn a zFCP WWPN identifier
+ * @lun a zFCP LUN identifier
+ * @error: (out): place to store error (if any)
+ *
+ * Returns: whether a zFCP device was successfully switched online
+ */
+gboolean  bd_s390_zfcp_online (const gchar *devno, const gchar *wwpn, const gchar *lun, GError **error);
+
+
+/*
+ * bd_s390_zfcp_scsi_offline:
+ * @devno a zFCP device number
+ * @wwpn a zFCP WWPN identifier
+ * @lun a zFCP LUN identifier
+ * @error: (out): place to store error (if any)
+ *
+ * Returns: whether a LUN was successfully removed from associated WWPN
+ *
+ * This function looks through /proc/scsi/scsi and manually removes LUNs from
+ * associated WWPNs. zFCP devices are SCSI devices accessible over FCP protocol.
+ * In z/OS the IODF (I/O definition file) contains basic information about the
+ * I/O config, but WWPN and LUN configuration is done at the OS level, hence
+ * this function becomes necessary when switching the device offline. This
+ * particular sequence of actions is for some reason unnecessary when switching
+ * the device online. Chalk it up to s390x being s390x.
+ */
+gboolean  bd_s390_zfcp_scsi_offline (const gchar *devno, const gchar *wwpn, const gchar *lun, GError **error);
+
+
+/*
+ * bd_s390_zfcp_offline:
+ * @devno: zfcp device number
+ * @wwpn: zfcp WWPN (World Wide Port Number)
+ * @lun: zfcp LUN (Logical Unit Number)
+ * @error: (out): place to store error (if any)
+ *
+ * Returns: whether a zfcp device was successfully switched offline
+ */
+gboolean  bd_s390_zfcp_offline (const gchar *devno, const gchar *wwpn, const gchar *lun, GError **error);
+

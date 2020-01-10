@@ -1,0 +1,94 @@
+#include <glib.h>
+#include <blockdev/utils.h>
+
+
+GQuark  bd_loop_error_quark (void);
+
+
+#define BD_LOOP_ERROR bd_loop_error_quark ()
+typedef enum {
+    BD_LOOP_ERROR_DEVICE,
+    BD_LOOP_ERROR_FAIL,
+} BDLoopError;
+
+/**
+ * bd_loop_get_backing_file:
+ * @dev_name: name of the loop device to get backing file for (e.g. "loop0")
+ * @error: (out): place to store error (if any)
+ *
+ * Returns: (transfer full): path of the device's backing file or %NULL if none
+ *                           is found
+ */
+gchar* bd_loop_get_backing_file (const gchar *dev_name, GError **error);
+
+
+/**
+ * bd_loop_get_loop_name:
+ * @file: path of the backing file to get loop name for
+ * @error: (out): place to store error (if any)
+ *
+ * Returns: (transfer full): name of the loop device associated with the given @file
+ */
+gchar* bd_loop_get_loop_name (const gchar *file, GError **error);
+
+
+/**
+ * bd_loop_setup:
+ * @file: file to setup as a loop device
+ * @offset: offset of the start of the device (in @file)
+ * @size: maximum size of the device (or 0 to leave unspecified)
+ * @read_only: whether to setup as read-only (%TRUE) or read-write (%FALSE)
+ * @part_scan: whether to enforce partition scan on the newly created device or not
+ * @loop_name: (allow-none) (out): if not %NULL, it is used to store the name of the loop device
+ * @error: (out): place to store error (if any)
+ *
+ * Returns: whether the @file was successfully setup as a loop device or not
+ */
+gboolean  bd_loop_setup (const gchar *file, guint64 offset, guint64 size, gboolean read_only, gboolean part_scan, const gchar **loop_name, GError **error);
+
+
+/**
+ * bd_loop_setup_from_fd:
+ * @fd: file descriptor for a file to setup as a new loop device
+ * @offset: offset of the start of the device (in file given by @fd)
+ * @size: maximum size of the device (or 0 to leave unspecified)
+ * @read_only: whether to setup as read-only (%TRUE) or read-write (%FALSE)
+ * @part_scan: whether to enforce partition scan on the newly created device or not
+ * @loop_name: (allow-none) (out): if not %NULL, it is used to store the name of the loop device
+ * @error: (out): place to store error (if any)
+ *
+ * Returns: whether an new loop device was successfully setup for @fd or not
+ */
+gboolean  bd_loop_setup_from_fd (gint fd, guint64 offset, guint64 size, gboolean read_only, gboolean part_scan, const gchar **loop_name, GError **error);
+
+
+/**
+ * bd_loop_teardown:
+ * @loop: path or name of the loop device to tear down
+ * @error: (out): place to store error (if any)
+ *
+ * Returns: whether the @loop device was successfully torn down or not
+ */
+gboolean  bd_loop_teardown (const gchar *loop, GError **error);
+
+
+/**
+ * bd_loop_get_autoclear:
+ * @loop: path or name of the loop device
+ * @error: (out): place to store error (if any)
+ *
+ * Returns: whether the autoclear flag is set on the @loop device or not (if %FALSE, @error may be set)
+ */
+gboolean  bd_loop_get_autoclear (const gchar *loop, GError **error);
+
+
+/**
+ * bd_loop_set_autoclear:
+ * @loop: path or name of the loop device
+ * @autoclear: whether to set or unset the autoclear flag
+ * @error: (out): place to store error (if any)
+ *
+ * Returns: whether the autoclear flag was successfully set on the @loop device or not
+ */
+gboolean  bd_loop_set_autoclear (const gchar *loop, gboolean autoclear, GError **error);
+

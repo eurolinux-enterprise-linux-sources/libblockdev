@@ -1,0 +1,57 @@
+#include <glib.h>
+#include <blockdev/utils.h>
+
+
+GQuark  bd_mpath_error_quark (void);
+
+
+#define BD_MPATH_ERROR bd_mpath_error_quark ()
+typedef enum {
+    BD_MPATH_ERROR_FLUSH,
+    BD_MPATH_ERROR_NOT_ROOT,
+    BD_MPATH_ERROR_DM_ERROR,
+    BD_MPATH_ERROR_INVAL,
+} BDMpathError;
+
+/**
+ * bd_mpath_flush_mpaths:
+ * @error: (out): place to store error (if any)
+ *
+ * Returns: whether multipath device maps were successfully flushed or not
+ *
+ * Flushes all unused multipath device maps.
+ */
+gboolean  bd_mpath_flush_mpaths (GError **error);
+
+
+/**
+ * bd_mpath_is_mpath_member:
+ * @device: device to test
+ * @error: (out): place to store error (if any)
+ *
+ * Returns: %TRUE if the device is a multipath member, %FALSE if not or an error
+ * appeared when queried (@error is set in those cases)
+ */
+gboolean  bd_mpath_is_mpath_member (const gchar *device, GError **error);
+
+
+/**
+ * bd_mpath_get_mpath_members:
+ * @error: (out): place to store error (if any)
+ *
+ * Returns: (transfer full) (array zero-terminated=1): list of names of all devices that are
+ *                                                     members of the mpath mappings (or %NULL
+ *                                                     in case of error)
+ */
+gchar** bd_mpath_get_mpath_members (GError **error);
+
+
+/**
+ * bd_mpath_set_friendly_names:
+ * @enabled: whether friendly names should be enabled or not
+ * @error: (out): place to store error (if any)
+ *
+ * Returns: if successfully set or not
+ */
+gboolean  bd_mpath_set_friendly_names (gboolean enabled, GError **error);
+

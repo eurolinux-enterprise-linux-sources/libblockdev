@@ -1,0 +1,384 @@
+#include <glib.h>
+#include <glib-object.h>
+#include <blockdev/utils.h>
+
+
+#ifndef BD_PART_API
+#define BD_PART_API
+
+GQuark  bd_part_error_quark (void);
+
+
+#define BD_PART_ERROR bd_part_error_quark ()
+typedef enum {
+    BD_PART_ERROR_EXISTS,
+    BD_PART_ERROR_INVAL,
+    BD_PART_ERROR_FAIL,
+} BDPartError;
+
+typedef enum {
+    BD_PART_TABLE_MSDOS = 0,
+    BD_PART_TABLE_GPT,
+    BD_PART_TABLE_UNDEF
+} BDPartTableType;
+
+typedef enum {
+    BD_PART_DISK_FLAG_GPT_PMBR_BOOT = 1
+} BDPartDiskFlag;
+
+typedef enum {
+    BD_PART_FLAG_BOOT = 1 << 1,
+    BD_PART_FLAG_ROOT = 1 << 2,
+    BD_PART_FLAG_SWAP = 1 << 3,
+    BD_PART_FLAG_HIDDEN = 1 << 4,
+    BD_PART_FLAG_RAID = 1 << 5,
+    BD_PART_FLAG_LVM = 1 << 6,
+    BD_PART_FLAG_LBA = 1 << 7,
+    BD_PART_FLAG_HPSERVICE = 1 << 8,
+    BD_PART_FLAG_CPALO = 1 << 9,
+    BD_PART_FLAG_PREP = 1 << 10,
+    BD_PART_FLAG_MSFT_RESERVED = 1 << 11,
+    BD_PART_FLAG_BIOS_GRUB = 1 << 12,
+    BD_PART_FLAG_APPLE_TV_RECOVERY = 1 << 13,
+    BD_PART_FLAG_DIAG = 1 << 14,
+    BD_PART_FLAG_LEGACY_BOOT = 1 << 15,
+    BD_PART_FLAG_MSFT_DATA = 1 << 16,
+    BD_PART_FLAG_IRST = 1 << 17,
+    BD_PART_FLAG_ESP = 1 << 18,
+    BD_PART_FLAG_GPT_SYSTEM_PART = 1 << 25,
+    BD_PART_FLAG_GPT_READ_ONLY = 1 << 26,
+    BD_PART_FLAG_GPT_HIDDEN = 1 << 27,
+    BD_PART_FLAG_GPT_NO_AUTOMOUNT = 1 << 28
+} BDPartFlag;
+
+typedef enum {
+    BD_PART_TYPE_NORMAL    = 0x00,
+    BD_PART_TYPE_LOGICAL   = 0x01,
+    BD_PART_TYPE_EXTENDED  = 0x02,
+    BD_PART_TYPE_FREESPACE = 0x04,
+    BD_PART_TYPE_METADATA  = 0x08,
+    BD_PART_TYPE_PROTECTED = 0x10
+} BDPartType;
+
+typedef enum {
+    BD_PART_TYPE_REQ_NORMAL   = 0x00,
+    BD_PART_TYPE_REQ_LOGICAL  = 0x01,
+    BD_PART_TYPE_REQ_EXTENDED = 0x02,
+    BD_PART_TYPE_REQ_NEXT     = 0x04
+} BDPartTypeReq;
+
+typedef enum {
+    BD_PART_ALIGN_MINIMAL,
+    BD_PART_ALIGN_OPTIMAL,
+    BD_PART_ALIGN_NONE
+} BDPartAlign;
+
+#define BD_PART_TYPE_SPEC (bd_part_spec_get_type ())
+GType  bd_part_spec_get_type ();
+
+
+typedef struct BDPartSpec {
+    gchar *path;
+    gchar *name;
+    gchar *type_guid;
+    guint64 type;
+    guint64 start;
+    guint64 size;
+    guint64 flags;
+} BDPartSpec;
+
+/**
+ * BDPartSpec:
+ * @path: path of the partition (block device)
+ * @name: name of the partition (for GPT partitions)
+ * @type_guid: GUID of the partition's type (GPT)
+ * @type: bit combination of partition's types (#BDPartType)
+ * @start: start of the partition
+ * @size: size of the partition
+ * @flags: bit combination of partition's flags (#BDPartFlag)
+ */
+BDPartSpec* bd_part_spec_copy (BDPartSpec *data);
+
+
+void  bd_part_spec_free (BDPartSpec *data);
+
+
+
+#define BD_PART_TYPE_DISK_SPEC (bd_part_disk_spec_get_type ())
+GType  bd_part_disk_spec_get_type ();
+
+
+typedef struct BDPartDiskSpec {
+    gchar *path;
+    BDPartTableType table_type;
+    guint64 size;
+    guint64 sector_size;
+    guint64 flags;
+} BDPartDiskSpec;
+
+/**
+ * BDPartDiskSpec:
+ * @path: path of the disk (block device)
+ * @table_type: type of the disk's partition table
+ * @size: size of the disk
+ * @sector_size: disk's sector size
+ * @flags: bit combination of the disk's flags (#BDPartDiskFlag)
+ */
+BDPartDiskSpec* bd_part_disk_spec_copy (BDPartDiskSpec *data);
+
+
+void  bd_part_disk_spec_free (BDPartDiskSpec *data);
+
+
+
+
+/**
+ * bd_part_create_table:
+ * @disk: path of the disk block device to create partition table on
+ * @type: type of the partition table to create
+ * @ignore_existing: whether to ignore/overwrite the existing table or not
+ *                   (reports an error if %FALSE and there's some table on @disk)
+ * @error: (out): place to store error (if any)
+ *
+ * Returns: whether the partition table was successfully created or not
+ */
+gboolean  bd_part_create_table (const gchar *disk, BDPartTableType type, gboolean ignore_existing, GError **error);
+
+
+/**
+ * bd_part_get_part_spec:
+ * @disk: disk to remove the partition from
+ * @part: partition to get spec for
+ * @error: (out): place to store error (if any)
+ *
+ * Returns: (transfer full): spec of the @part partition from @disk or %NULL in case of error
+ */
+BDPartSpec* bd_part_get_part_spec (const gchar *disk, const gchar *part, GError **error);
+
+
+/**
+ * bd_part_get_part_by_pos:
+ * @disk: disk to remove the partition from
+ * @position: position (in bytes) determining the partition
+ * @error: (out): place to store error (if any)
+ *
+ * Returns: (transfer full): spec of the partition from @disk spanning over the @position or %NULL if no such
+ *          partition exists or in case of error (@error is set)
+ */
+BDPartSpec* bd_part_get_part_by_pos (const gchar *disk, guint64 position, GError **error);
+
+
+/**
+ * bd_part_get_disk_spec:
+ * @disk: disk to get information about
+ * @error: (out): place to store error (if any)
+ *
+ * Returns: (transfer full): information about the given @disk or %NULL (in case of error)
+ */
+BDPartDiskSpec* bd_part_get_disk_spec (const gchar *disk, GError **error);
+
+
+/**
+ * bd_part_get_disk_parts:
+ * @disk: disk to get information about partitions for
+ * @error: (out): place to store error (if any)
+ *
+ * Returns: (transfer full) (array zero-terminated=1): specs of the partitions from @disk or %NULL in case of error
+ */
+BDPartSpec** bd_part_get_disk_parts (const gchar *disk, GError **error);
+
+
+/**
+ * bd_part_get_disk_free_regions:
+ * @disk: disk to get free regions for
+ * @error: (out): place to store error (if any)
+ *
+ * Returns: (transfer full) (array zero-terminated=1): specs of the free regions from @disk or %NULL in case of error
+ */
+BDPartSpec** bd_part_get_disk_free_regions (const gchar *disk, GError **error);
+
+
+/**
+ * bd_part_get_best_free_region:
+ * @disk: disk to get the best free region for
+ * @type: type of the partition that is planned to be added
+ * @size: size of the partition to be added
+ * @error: (out): place to store error (if any)
+ *
+ * Returns: (transfer full): spec of the best free region on @disk for a new partition of type @type
+ *                           with the size of @size or %NULL if there is none such region or if
+ *                           there was an error (@error gets populated)
+ *
+ * Note: For the @type %BD_PART_TYPE_NORMAL, the smallest possible space that *is not* in an extended partition
+ *       is found. For the @type %BD_PART_TYPE_LOGICAL, the smallest possible space that *is* in an extended
+ *       partition is found. For %BD_PART_TYPE_EXTENDED, the biggest possible space is found as long as there
+ *       is no other extended partition (there can only be one).
+ */
+BDPartSpec* bd_part_get_best_free_region (const gchar *disk, BDPartType type, guint64 size, GError **error);
+
+
+/**
+ * bd_part_create_part:
+ * @disk: disk to create partition on
+ * @type: type of the partition to create (if %BD_PART_TYPE_REQ_NEXT, the
+ *        partition type will be determined automatically based on the existing
+ *        partitions)
+ * @start: where the partition should start (i.e. offset from the disk start)
+ * @size: desired size of the partition (if 0, a max-sized partition is created)
+ * @align: alignment to use for the partition
+ * @error: (out): place to store error (if any)
+ *
+ * Returns: (transfer full): specification of the created partition or %NULL in case of error
+ *
+ * NOTE: The resulting partition may start at a different position than given by
+ *       @start and can have different size than @size due to alignment.
+ */
+BDPartSpec* bd_part_create_part (const gchar *disk, BDPartTypeReq type, guint64 start, guint64 size, BDPartAlign align, GError **error);
+
+
+/**
+ * bd_part_delete_part:
+ * @disk: disk to remove the partition from
+ * @part: partition to remove
+ * @error: (out): place to store error (if any)
+ *
+ * Returns: whether the @part partition was successfully deleted from @disk
+ */
+gboolean  bd_part_delete_part (const gchar *disk, const gchar *part, GError **error);
+
+
+/**
+ * bd_part_resize_part:
+ * @disk: disk containing the paritition
+ * @part: partition to resize
+ * @size: new partition size, 0 for maximal size
+ * @align: alignment to use for the partition end
+ * @error: (out): place to store error (if any)
+ *
+ * Returns: whether the @part partition was successfully resized on @disk to @size
+ *
+ * NOTE: The resulting partition may be slightly bigger than requested due to alignment.
+ */
+gboolean  bd_part_resize_part (const gchar *disk, const gchar *part, guint64 size, BDPartAlign align, GError **error);
+
+
+/**
+ * bd_part_set_part_flag:
+ * @disk: disk the partition belongs to
+ * @part: partition to set the flag on
+ * @flag: flag to set
+ * @state: state to set for the @flag (%TRUE = enabled)
+ * @error: (out): place to store error (if any)
+ *
+ * Returns: whether the flag @flag was successfully set on the @part partition
+ * or not.
+ */
+gboolean  bd_part_set_part_flag (const gchar *disk, const gchar *part, BDPartFlag flag, gboolean state, GError **error);
+
+
+/**
+ * bd_part_set_disk_flag:
+ * @disk: disk the partition belongs to
+ * @flag: flag to set
+ * @state: state to set for the @flag (%TRUE = enabled)
+ * @error: (out): place to store error (if any)
+ *
+ * Returns: whether the flag @flag was successfully set on the @disk or not
+ */
+gboolean  bd_part_set_disk_flag (const gchar *disk, BDPartDiskFlag flag, gboolean state, GError **error);
+
+
+/**
+ * bd_part_set_part_flags:
+ * @disk: disk the partition belongs to
+ * @part: partition to set the flag on
+ * @flags: flags to set (mask combined from #BDPartFlag numbers)
+ * @error: (out): place to store error (if any)
+ *
+ * Returns: whether the @flags were successfully set on the @part partition or
+ *          not
+ *
+ * Note: Unsets all the other flags on the partition.
+ *
+ */
+gboolean  bd_part_set_part_flags (const gchar *disk, const gchar *part, guint64 flags, GError **error);
+
+
+/**
+ * bd_part_set_part_name:
+ * @disk: device the partition belongs to
+ * @part: partition the should be set for
+ * @name: name to set
+ * @error: (out): place to store error (if any)
+ *
+ * Returns: whether the name was successfully set or not
+ */
+gboolean  bd_part_set_part_name (const gchar *disk, const gchar *part, const gchar *name, GError **error);
+
+
+/**
+ * bd_part_set_part_type:
+ * @disk: device the partition belongs to
+ * @part: partition the should be set for
+ * @type_guid: GUID of the type
+ * @error: (out): place to store error (if any)
+ *
+ * Returns: whether the @type_guid type was successfully set for @part or not
+ */
+gboolean  bd_part_set_part_type (const gchar *disk, const gchar *part, const gchar *type_guid, GError **error);
+
+
+/**
+ * bd_part_set_part_id:
+ * @disk: device the partition belongs to
+ * @part: partition the should be set for
+ * @part_id: partition Id
+ * @error: (out): place to store error (if any)
+ *
+ * Returns: whether the @part_id type was successfully set for @part or not
+ */
+gboolean  bd_part_set_part_id (const gchar *disk, const gchar *part, const gchar *part_id, GError **error);
+
+
+/**
+ * bd_part_get_part_id:
+ * @disk: device the partition belongs to
+ * @part: partition the should be set for
+ * @error: (out): place to store error (if any)
+ *
+ * Returns (transfer full): partition id type or %NULL in case of error
+ */
+gchar* bd_part_get_part_id (const gchar *disk, const gchar *part, GError **error);
+
+
+/**
+ * bd_part_get_part_table_type_str:
+ * @type: table type to get string representation for
+ * @error: (out): place to store error (if any)
+ *
+ * Returns: (transfer none): string representation of @table_type
+ */
+const gchar* bd_part_get_part_table_type_str (BDPartTableType type, GError **error);
+
+
+/**
+ * bd_part_get_flag_str:
+ * @flag: flag to get string representation for
+ * @error: (out): place to store error (if any)
+ *
+ * Returns: (transfer none): string representation of @flag
+ */
+const gchar* bd_part_get_flag_str (BDPartFlag flag, GError **error);
+
+
+/**
+ * bd_part_get_type_str:
+ * @type: type to get string representation for
+ * @error: (out): place to store error (if any)
+ *
+ * Returns: (transfer none): string representation of @type
+ */
+const gchar* bd_part_get_type_str (BDPartType type, GError **error);
+
+
+#endif  /* BD_KBD_API */

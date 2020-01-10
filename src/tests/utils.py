@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 import os
 import re
 import glob
@@ -6,6 +8,7 @@ import tempfile
 import dbus
 import unittest
 import time
+import sys
 from contextlib import contextmanager
 from itertools import chain
 
@@ -25,7 +28,7 @@ def create_sparse_tempfile(name, size):
         :param size: the file size (in bytes)
         :returns: the path to the newly created file
     """
-    (fd, path) = tempfile.mkstemp(prefix="libblockdev.", suffix="-%s" % name)
+    (fd, path) = tempfile.mkstemp(prefix="bd.", suffix="-%s" % name)
     os.close(fd)
     create_sparse_file(path, size)
     return path
@@ -119,6 +122,26 @@ def _delete_lun(wwn, delete_target=True, backstore=None):
     if delete_target:
         _delete_target(wwn, backstore)
 
+def _get_lio_dev_path(store_wwn, tgt_wwn, store_name, retry=True):
+    """Check if the lio device has been really created and is in /dev/disk/by-id"""
+
+    # the backstore's wwn contains '-'s we need to get rid of and then take just
+    # the fist 25 characters which participate in the device's ID
+    wwn = store_wwn.replace("-", "")
+    wwn = wwn[:25]
+
+    globs = glob.glob("/dev/disk/by-id/wwn-*%s" % wwn)
+    if len(globs) != 1:
+        if retry:
+            time.sleep(3)
+            os.system("udevadm settle")
+            return _get_lio_dev_path(store_wwn, tgt_wwn, store_wwn, False)
+        else:
+            _delete_target(tgt_wwn, store_name)
+            raise RuntimeError("Failed to identify the resulting device for '%s'" % store_name)
+    else:
+        return os.path.realpath(globs[0])
+
 def create_lio_device(fpath):
     """
     Creates a new LIO loopback device (using targetcli) on top of the
@@ -167,17 +190,8 @@ def create_lio_device(fpath):
         _delete_target(tgt_wwn, store_name)
         raise RuntimeError("Failed to create a new LUN for '%s' using '%s'" % (tgt_wwn, store_name))
 
-    # the backstore's wwn contains '-'s we need to get rid of and then take just
-    # the fist 25 characters which participate in the device's ID
-    store_wwn = store_wwn.replace("-", "")
-    store_wwn = store_wwn[:25]
+    dev_path = _get_lio_dev_path(store_wwn, tgt_wwn, store_name)
 
-    globs = glob.glob("/dev/disk/by-id/wwn-*%s" % store_wwn)
-    if len(globs) != 1:
-        _delete_target(tgt_wwn, store_name)
-        raise RuntimeError("Failed to identify the resulting device for '%s'" % store_name)
-
-    dev_path = os.path.realpath(globs[0])
     _lio_devs[dev_path] = (tgt_wwn, store_name)
     return dev_path
 
@@ -203,11 +217,11 @@ def write_file(filename, content):
     with open(filename, "w") as f:
         f.write(content)
 
-def run_command(command):
+def run_command(command, cmd_input=None):
     res = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE,
-                           stderr=subprocess.PIPE)
+                           stderr=subprocess.PIPE, stdin=subprocess.PIPE)
 
-    out, err = res.communicate()
+    out, err = res.communicate(input=cmd_input)
     return (res.returncode, out.decode().strip(), err.decode().strip())
 
 def get_version_from_pretty_name(pretty_name):
@@ -304,6 +318,30 @@ def requires_locales(locales):
     return decorator
 
 
+# taken from udisks2/src/tests/dbus-tests/udiskstestcase.py
+def unstable_test(test):
+    """Decorator for unstable tests
+
+    Failures of tests decorated with this decorator are silently ignored unless
+    the ``UNSTABLE_TESTS_FATAL`` environment variable is defined.
+    """
+
+    def decorated_test(*args):
+        try:
+            test(*args)
+        except unittest.SkipTest:
+            # make sure skipped tests are just skipped as usual
+            raise
+        except:
+            # and swallow everything else, just report a failure of an unstable
+            # test, unless told otherwise
+            if "UNSTABLE_TESTS_FATAL" in os.environ:
+                raise
+            print("unstable-fail...", end="", file=sys.stderr)
+
+    return decorated_test
+
+
 def run(cmd_string):
     """
     Run the a command with file descriptors closed as lvm is trying to
@@ -312,11 +350,13 @@ def run(cmd_string):
     return subprocess.call(cmd_string, close_fds=True, shell=True)
 
 
-def mount(device, where):
+def mount(device, where, ro=False):
     if not os.path.isdir(where):
         os.makedirs(where)
-    os.system("mount %s %s" % (device, where))
-
+    if ro:
+        os.system("mount -oro %s %s" % (device, where))
+    else:
+        os.system("mount %s %s" % (device, where))
 
 def umount(what, retry=True):
     try:

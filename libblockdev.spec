@@ -1,3 +1,4 @@
+%define with_python2 1
 %define with_python3 0
 %define with_gtk_doc 1
 %define with_bcache 0
@@ -13,16 +14,46 @@
 %define with_kbd 1
 %define with_part 1
 %define with_fs 1
+%define with_nvdimm 1
+%define with_vdo 1
 %define with_gi 1
+%define with_escrow 1
+%define with_dmraid 1
 
-%define is_rhel 0%{?rhel} != 0
+# python2 is not available on RHEL > 7 and not needed on Fedora > 28
+%if 0%{?rhel} > 7 || 0%{?fedora} > 28 || %{with_python2} == 0
+%define with_python2 0
+%define python2_copts --without-python2
+%endif
 
-# python3 is not available on RHEL
-%if %{is_rhel}
+# python3 is not available on older RHEL
+%if (! 0%{?fedora} && 0%{?rhel} <= 7) || %{with_python3} == 0
 %define with_python3 0
+%define python3_copts  --without-python3
+%endif
+
+# bcache is not available on older RHEL
+%if (! 0%{?fedora} && 0%{?rhel} <= 7) || %{with_bcache} == 0
 %define with_bcache 0
+%define bcache_copts --without-bcache
+%endif
+
+# lvm_dbus is not available on older RHEL
+%if (! 0%{?fedora} && 0%{?rhel} <= 7) || %{with_lvm_dbus} == 0
 %define with_lvm_dbus 0
-%define distro_copts --without-python3 --without-bcache --without-lvm-dbus
+%define lvm_dbus_copts --without-lvm-dbus
+%endif
+
+# vdo is not available on Fedora
+%if (0%{?fedora}) || %{with_vdo} == 0
+%define with_vdo 0
+%define vdo_copts --without-vdo
+%endif
+
+# vdo is available only on x86_64
+%ifnarch x86_64
+%define with_vdo 0
+%define vdo_copts --without-vdo
 %endif
 
 %if %{with_btrfs} != 1
@@ -30,9 +61,17 @@
 %endif
 %if %{with_crypto} != 1
 %define crypto_copts --without-crypto
+%else
+%if %{with_escrow} != 1
+%define crypto_copts --without-escrow
+%endif
 %endif
 %if %{with_dm} != 1
 %define dm_copts --without-dm
+%else
+%if %{with_dmraid} != 1
+%define dm_copts --without-dmraid
+%endif
 %endif
 %if %{with_loop} != 1
 %define loop_copts --without-loop
@@ -61,25 +100,33 @@
 %if %{with_fs} != 1
 %define fs_copts --without-fs
 %endif
+%if %{with_nvdimm} != 1
+%define nvdimm_copts --without-nvdimm
+%endif
+%if %{with_vdo} != 1
+%define vdo_copts --without-vdo
+%endif
 %if %{with_gi} != 1
 %define gi_copts --disable-introspection
 %endif
 
-%define configure_opts %{?distro_copts} %{?btrfs_copts} %{?crypto_copts} %{?dm_copts} %{?loop_copts} %{?lvm_copts} %{?lvm_dbus_copts} %{?mdraid_copts} %{?mpath_copts} %{?swap_copts} %{?kbd_copts} %{?part_copts} %{?fs_copts} %{?gi_copts}
+%define configure_opts %{?python2_copts} %{?python3_copts} %{?bcache_copts} %{?lvm_dbus_copts} %{?btrfs_copts} %{?crypto_copts} %{?dm_copts} %{?loop_copts} %{?lvm_copts} %{?lvm_dbus_copts} %{?mdraid_copts} %{?mpath_copts} %{?swap_copts} %{?kbd_copts} %{?part_copts} %{?fs_copts} %{?nvdimm_copts} %{vdo_copts} %{?gi_copts}
 
 Name:        libblockdev
-Version:     2.12
+Version:     2.18
 Release:     3%{?dist}
 Summary:     A library for low-level manipulation with block devices
 License:     LGPLv2+
 URL:         https://github.com/storaged-project/libblockdev
-Source0:     https://github.com/storaged-project/libblockdev/archive/%{name}-%{version}.tar.gz
+Source0:     https://github.com/storaged-project/libblockdev/releases/download/%{version}-%{release}/%{name}-%{version}.tar.gz
 
 BuildRequires: glib2-devel
 %if %{with_gi}
 BuildRequires: gobject-introspection-devel
 %endif
+%if %{with_python2}
 BuildRequires: python-devel
+%endif
 %if %{with_python3}
 BuildRequires: python3-devel
 %endif
@@ -93,7 +140,7 @@ BuildRequires: glib2-doc
 # BuildRequires: nss-tools
 
 # Needed for python 2 vs. 3 compatibility in the tests, but not used to build
-# BuildRequires: python-six
+# BuildRequires: python2-six
 # BuildRequires: python3-six
 
 Requires: %{name}-utils%{?_isa} = %{version}-%{release}
@@ -116,15 +163,22 @@ Requires: glib2-devel
 This package contains header files and pkg-config files needed for development
 with the libblockdev library.
 
+%if %{with_python2}
 %package -n python2-blockdev
 Summary:     Python2 gobject-introspection bindings for libblockdev
 Requires: %{name}%{?_isa} = %{version}-%{release}
+
+%if 0%{?fedora} <= 26 || 0%{?rhel} <= 7
 Requires: pygobject3-base
+%else
+Requires: python2-gobject-base
+%endif
 %{?python_provide:%python_provide python2-blockdev}
 
 %description -n python2-blockdev
 This package contains enhancements to the gobject-introspection bindings for
 libblockdev in Python2.
+%endif
 
 %if %{with_python3}
 %package -n python3-blockdev
@@ -139,6 +193,7 @@ libblockdev in Python3.
 %endif
 
 %package utils
+BuildRequires: kmod-devel
 Summary:     A library with utility functions for the libblockdev library
 
 %description utils
@@ -181,8 +236,12 @@ with the libblockdev-btrfs plugin/library.
 %if %{with_crypto}
 %package crypto
 BuildRequires: cryptsetup-devel
+
+%if %{with_escrow}
 BuildRequires: volume_key-devel >= 0.3.9-7
 BuildRequires: nss-devel
+%endif
+
 Summary:     The crypto plugin for the libblockdev library
 Requires: %{name}-utils%{?_isa} = %{version}-%{release}
 
@@ -205,7 +264,9 @@ with the libblockdev-crypto plugin/library.
 %if %{with_dm}
 %package dm
 BuildRequires: device-mapper-devel
+%if %{with_dmraid}
 BuildRequires: dmraid-devel
+%endif
 BuildRequires: systemd-devel
 Summary:     The Device Mapper plugin for the libblockdev library
 Requires: %{name}-utils%{?_isa} = %{version}-%{release}
@@ -222,7 +283,9 @@ Requires: %{name}-dm%{?_isa} = %{version}-%{release}
 Requires: glib2-devel
 Requires: device-mapper-devel
 Requires: systemd-devel
+%if %{with_dmraid}
 Requires: dmraid-devel
+%endif
 Requires: %{name}-utils-devel%{?_isa} = %{version}-%{release}
 
 %description dm-devel
@@ -260,7 +323,7 @@ with the libblockdev-fs plugin/library.
 
 %if %{with_kbd}
 %package kbd
-BuildRequires: kmod-devel
+BuildRequires: libbytesize-devel
 Summary:     The KBD plugin for the libblockdev library
 Requires: %{name}-utils%{?_isa} = %{version}-%{release}
 %if %{with_bcache}
@@ -399,6 +462,29 @@ This package contains header files and pkg-config files needed for development
 with the libblockdev-mpath plugin/library.
 %endif
 
+%if %{with_nvdimm}
+%package nvdimm
+BuildRequires: ndctl-devel
+BuildRequires: libuuid-devel
+Summary:     The NVDIMM plugin for the libblockdev library
+Requires: %{name}-utils%{?_isa} = %{version}-%{release}
+Requires: ndctl
+
+%description nvdimm
+The libblockdev library plugin (and in the same time a standalone library)
+providing the functionality related to operations with NVDIMM devices.
+
+%package nvdimm-devel
+Summary:     Development files for the libblockdev-nvdimm plugin/library
+Requires: %{name}-nvdimm%{?_isa} = %{version}-%{release}
+Requires: %{name}-utils-devel%{?_isa} = %{version}-%{release}
+Requires: glib2-devel
+
+%description nvdimm-devel
+This package contains header files and pkg-config files needed for development
+with the libblockdev-nvdimm plugin/library.
+%endif
+
 
 %if %{with_part}
 %package part
@@ -447,9 +533,33 @@ with the libblockdev-swap plugin/library.
 %endif
 
 
+%if %{with_vdo}
+%package vdo
+BuildRequires: libbytesize-devel
+BuildRequires: libyaml-devel
+Summary:     The vdo plugin for the libblockdev library
+Requires: %{name}-utils%{?_isa} = %{version}-%{release}
+Requires: vdo
+Requires: kmod-kvdo
+
+%description vdo
+The libblockdev library plugin (and in the same time a standalone library)
+providing the functionality related to VDO devices.
+
+%package vdo-devel
+Summary:     Development files for the libblockdev-vdo plugin/library
+Requires: %{name}-vdo%{?_isa} = %{version}-%{release}
+Requires: %{name}-utils-devel%{?_isa} = %{version}-%{release}
+Requires: glib2-devel
+
+%description vdo-devel
+This package contains header files and pkg-config files needed for development
+with the libblockdev-vdo plugin/library.
+%endif
+
+
 %ifarch s390 s390x
 %package s390
-BuildRequires: s390utils-devel
 Summary:    The s390 plugin for the libblockdev library
 Requires: s390utils
 Requires: %{name}-utils%{?_isa} = %{version}-%{release}
@@ -463,7 +573,6 @@ Summary:     Development files for the libblockdev-s390 plugin/library
 Requires: %{name}-s390%{?_isa} = %{version}-%{release}
 Requires: %{name}-utils-devel%{?_isa} = %{version}-%{release}
 Requires: glib2-devel
-Requires: s390utils-devel
 
 %description s390-devel
 This package contains header files and pkg-config files needed for development
@@ -510,12 +619,20 @@ Requires: %{name}-mdraid%{?_isa} = %{version}-%{release}
 Requires: %{name}-mpath%{?_isa} = %{version}-%{release}
 %endif
 
+%if %{with_nvdimm}
+Requires: %{name}-nvdimm%{?_isa} = %{version}-%{release}
+%endif
+
 %if %{with_part}
 Requires: %{name}-part%{?_isa} = %{version}-%{release}
 %endif
 
 %if %{with_swap}
 Requires: %{name}-swap%{?_isa} = %{version}-%{release}
+%endif
+
+%if %{with_vdo}
+Requires: %{name}-vdo%{?_isa} = %{version}-%{release}
 %endif
 
 %ifarch s390 s390x
@@ -542,6 +659,7 @@ find %{buildroot} -type f -name "*.la" | xargs %{__rm}
 %postun -p /sbin/ldconfig
 %post utils -p /sbin/ldconfig
 %postun utils -p /sbin/ldconfig
+
 
 %if %{with_btrfs}
 %post btrfs -p /sbin/ldconfig
@@ -588,6 +706,11 @@ find %{buildroot} -type f -name "*.la" | xargs %{__rm}
 %postun mpath -p /sbin/ldconfig
 %endif
 
+%if %{with_nvdimm}
+%post nvdimm -p /sbin/ldconfig
+%postun nvdimm -p /sbin/ldconfig
+%endif
+
 %if %{with_part}
 %post part -p /sbin/ldconfig
 %postun part -p /sbin/ldconfig
@@ -596,6 +719,11 @@ find %{buildroot} -type f -name "*.la" | xargs %{__rm}
 %if %{with_swap}
 %post swap -p /sbin/ldconfig
 %postun swap -p /sbin/ldconfig
+%endif
+
+%if %{with_vdo}
+%post vdo -p /sbin/ldconfig
+%postun vdo -p /sbin/ldconfig
 %endif
 
 %ifarch s390 s390x
@@ -634,8 +762,10 @@ find %{buildroot} -type f -name "*.la" | xargs %{__rm}
 %{_datadir}/gir*/BlockDev*.gir
 %endif
 
+%if %{with_python2}
 %files -n python2-blockdev
 %{python2_sitearch}/gi/overrides/*
+%endif
 
 %if %{with_python3}
 %files -n python3-blockdev
@@ -650,12 +780,14 @@ find %{buildroot} -type f -name "*.la" | xargs %{__rm}
 %files utils-devel
 %{_libdir}/libbd_utils.so
 %{_libdir}/libbd_part_err.so
+%{_libdir}/pkgconfig/blockdev-utils.pc
 %dir %{_includedir}/blockdev
 %{_includedir}/blockdev/utils.h
 %{_includedir}/blockdev/sizes.h
 %{_includedir}/blockdev/exec.h
 %{_includedir}/blockdev/extra_arg.h
 %{_includedir}/blockdev/dev_utils.h
+%{_includedir}/blockdev/module.h
 
 
 %if %{with_btrfs}
@@ -698,7 +830,9 @@ find %{buildroot} -type f -name "*.la" | xargs %{__rm}
 %files fs-devel
 %{_libdir}/libbd_fs.so
 %dir %{_includedir}/blockdev
+%dir %{_includedir}/blockdev/fs
 %{_includedir}/blockdev/fs.h
+%{_includedir}/blockdev/fs/*.h
 %endif
 
 
@@ -769,6 +903,17 @@ find %{buildroot} -type f -name "*.la" | xargs %{__rm}
 %endif
 
 
+%if %{with_nvdimm}
+%files nvdimm
+%{_libdir}/libbd_nvdimm.so.*
+
+%files nvdimm-devel
+%{_libdir}/libbd_nvdimm.so
+%dir %{_includedir}/blockdev
+%{_includedir}/blockdev/nvdimm.h
+%endif
+
+
 %if %{with_part}
 %files part
 %{_libdir}/libbd_part.so.*
@@ -791,6 +936,17 @@ find %{buildroot} -type f -name "*.la" | xargs %{__rm}
 %endif
 
 
+%if %{with_vdo}
+%files vdo
+%{_libdir}/libbd_vdo.so.*
+
+%files vdo-devel
+%{_libdir}/libbd_vdo.so
+%dir %{_includedir}/blockdev
+%{_includedir}/blockdev/vdo.h
+%endif
+
+
 %ifarch s390 s390x
 %files s390
 %{_libdir}/libbd_s390.so.*
@@ -804,6 +960,18 @@ find %{buildroot} -type f -name "*.la" | xargs %{__rm}
 %files plugins-all
 
 %changelog
+* Tue Jul 24 2018 Vojtech Trefny <vtrefny@redhat.com> - 2.18-3
+- Rebuild with new libcryptsetup.so.12
+  Resolves: rhbz#1593854
+
+* Fri Jun 22 2018 Vojtech Trefny <vtrefny@redhat.com> - 2.18-2
+- Do not build libblockdev-vdo on non-x86_64 architectures
+  Related: rhbz#1545623
+
+* Wed Jun 20 2018 Vojtech Trefny <vtrefny@redhat.com> - 2.18-1
+- New version 2.18
+  Resolves: rhbz#1545623
+
 * Wed Oct 11 2017 Vratislav Podzimek <vpodzime@redhat.com> - 2.12-3
 - A few more exact Requires for libblockdev-utils
   Related: rhbz#1480294

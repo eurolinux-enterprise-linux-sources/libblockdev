@@ -249,7 +249,8 @@ GType  bd_lvm_cache_stats_get_type () {
     return type;
 }
 
-static const gchar const * const lvm_functions[] = {
+static const gchar* const lvm_functions[] = {
+    "bd_lvm_is_tech_avail",
     "bd_lvm_is_supported_pe_size",
     "bd_lvm_get_supported_pe_sizes",
     "bd_lvm_get_max_lv_size",
@@ -307,15 +308,38 @@ static const gchar const * const lvm_functions[] = {
     "bd_lvm_cache_pool_convert",
     NULL};
 
-gchar const * const * get_lvm_functions (void) {
+const gchar* const* get_lvm_functions (void) {
     return lvm_functions;
 }
 
-static const guint8 lvm_num_functions = 55;
+static const guint8 lvm_num_functions = 56;
 
 guint8 get_lvm_num_functions (void) {
     return lvm_num_functions;
 }
+
+gboolean  bd_lvm_is_tech_avail_stub (BDLVMTech tech, guint64 mode, GError **error) {
+    g_critical ("The function 'bd_lvm_is_tech_avail' called, but not implemented!");
+    g_set_error (error, BD_INIT_ERROR, BD_INIT_ERROR_NOT_IMPLEMENTED,
+                "The function 'bd_lvm_is_tech_avail' called, but not implemented!");
+    return FALSE;
+}
+
+gboolean  (*_bd_lvm_is_tech_avail) (BDLVMTech tech, guint64 mode, GError **error) = bd_lvm_is_tech_avail_stub;
+
+/**
+ * bd_lvm_is_tech_avail:
+ * @tech: the queried tech
+ * @mode: a bit mask of queried modes of operation (#BDLVMTechMode) for @tech
+ * @error: (out): place to store error (details about why the @tech-@mode combination is not available)
+ *
+ * Returns: whether the @tech-@mode combination is avaible -- supported by the
+ *          plugin implementation and having all the runtime dependencies available
+ */
+gboolean  bd_lvm_is_tech_avail (BDLVMTech tech, guint64 mode, GError **error) {
+    return _bd_lvm_is_tech_avail (tech, mode, error);
+}
+
 
 gboolean  bd_lvm_is_supported_pe_size_stub (guint64 size, GError **error) {
     g_critical ("The function 'bd_lvm_is_supported_pe_size' called, but not implemented!");
@@ -332,6 +356,8 @@ gboolean  (*_bd_lvm_is_supported_pe_size) (guint64 size, GError **error) = bd_lv
  * @error: (out): place to store error (if any)
  *
  * Returns: whether the given size is supported physical extent size or not
+ *
+ * Tech category: %BD_LVM_TECH_CALCS no mode (it is ignored)
  */
 gboolean  bd_lvm_is_supported_pe_size (guint64 size, GError **error) {
     return _bd_lvm_is_supported_pe_size (size, error);
@@ -352,6 +378,8 @@ guint64 * (*_bd_lvm_get_supported_pe_sizes) (GError **error) = bd_lvm_get_suppor
  * @error: (out): place to store error (if any)
  *
  * Returns: (transfer full) (array zero-terminated=1): list of supported PE sizes
+ *
+ * Tech category: %BD_LVM_TECH_CALCS no mode (it is ignored)
  */
 guint64 * bd_lvm_get_supported_pe_sizes (GError **error) {
     return _bd_lvm_get_supported_pe_sizes (error);
@@ -372,6 +400,8 @@ guint64  (*_bd_lvm_get_max_lv_size) (GError **error) = bd_lvm_get_max_lv_size_st
  * @error: (out): place to store error (if any)
  *
  * Returns: maximum LV size in bytes
+ *
+ * Tech category: %BD_LVM_TECH_CALCS no mode (it is ignored)
  */
 guint64  bd_lvm_get_max_lv_size (GError **error) {
     return _bd_lvm_get_max_lv_size (error);
@@ -400,6 +430,8 @@ guint64  (*_bd_lvm_round_size_to_pe) (guint64 size, guint64 pe_size, gboolean ro
  * of the @roundup parameter. If the rounded value is too big to fit in the
  * return type, the result is rounded down (floored) regardless of the @roundup
  * parameter.
+ *
+ * Tech category: %BD_LVM_TECH_CALCS no mode (it is ignored)
  */
 guint64  bd_lvm_round_size_to_pe (guint64 size, guint64 pe_size, gboolean roundup, GError **error) {
     return _bd_lvm_round_size_to_pe (size, pe_size, roundup, error);
@@ -425,6 +457,8 @@ guint64  (*_bd_lvm_get_lv_physical_size) (guint64 lv_size, guint64 pe_size, GErr
  *
  * Gives number of bytes needed for an LV with the size @lv_size on an LVM stack
  * using given @pe_size.
+ *
+ * Tech category: %BD_LVM_TECH_CALCS no mode (it is ignored)
  */
 guint64  bd_lvm_get_lv_physical_size (guint64 lv_size, guint64 pe_size, GError **error) {
     return _bd_lvm_get_lv_physical_size (lv_size, pe_size, error);
@@ -449,6 +483,8 @@ guint64  (*_bd_lvm_get_thpool_padding) (guint64 size, guint64 pe_size, gboolean 
  *
  * Returns: size of the padding needed for a thin pool with the given @size
  *         according to the @pe_size and @included
+ *
+ * Tech category: %BD_LVM_TECH_THIN_CALCS no mode (it is ignored)
  */
 guint64  bd_lvm_get_thpool_padding (guint64 size, guint64 pe_size, gboolean included, GError **error) {
     return _bd_lvm_get_thpool_padding (size, pe_size, included, error);
@@ -473,6 +509,8 @@ guint64  (*_bd_lvm_get_thpool_meta_size) (guint64 size, guint64 chunk_size, guin
  *
  * Returns: recommended size of the metadata space for the specified pool or 0
  *          in case of error
+ *
+ * Tech category: %BD_LVM_TECH_THIN_CALCS no mode (it is ignored)
  */
 guint64  bd_lvm_get_thpool_meta_size (guint64 size, guint64 chunk_size, guint64 n_snapshots, GError **error) {
     return _bd_lvm_get_thpool_meta_size (size, chunk_size, n_snapshots, error);
@@ -494,6 +532,8 @@ gboolean  (*_bd_lvm_is_valid_thpool_md_size) (guint64 size, GError **error) = bd
  * @error: (out): place to store error (if any)
  *
  * Returns: whether the given size is a valid thin pool metadata size or not
+ *
+ * Tech category: %BD_LVM_TECH_THIN_CALCS no mode (it is ignored)
  */
 gboolean  bd_lvm_is_valid_thpool_md_size (guint64 size, GError **error) {
     return _bd_lvm_is_valid_thpool_md_size (size, error);
@@ -516,6 +556,8 @@ gboolean  (*_bd_lvm_is_valid_thpool_chunk_size) (guint64 size, gboolean discard,
  * @error: (out): place to store error (if any)
  *
  * Returns: whether the given size is a valid thin pool chunk size or not
+ *
+ * Tech category: %BD_LVM_TECH_THIN_CALCS no mode (it is ignored)
  */
 gboolean  bd_lvm_is_valid_thpool_chunk_size (guint64 size, gboolean discard, GError **error) {
     return _bd_lvm_is_valid_thpool_chunk_size (size, discard, error);
@@ -541,6 +583,8 @@ gboolean  (*_bd_lvm_pvcreate) (const gchar *device, guint64 data_alignment, guin
  * @error: (out): place to store error (if any)
  *
  * Returns: whether the PV was successfully created or not
+ *
+ * Tech category: %BD_LVM_TECH_BASIC-%BD_LVM_TECH_MODE_CREATE
  */
 gboolean  bd_lvm_pvcreate (const gchar *device, guint64 data_alignment, guint64 metadata_size, const BDExtraArg **extra, GError **error) {
     return _bd_lvm_pvcreate (device, data_alignment, metadata_size, extra, error);
@@ -569,6 +613,8 @@ gboolean  (*_bd_lvm_pvresize) (const gchar *device, guint64 size, const BDExtraA
  * If given @size different from 0, sets the PV's size to the given value (see
  * pvresize(8)). If given @size 0, adjusts the PV's size to the underlaying
  * block device's size.
+ *
+ * Tech category: %BD_LVM_TECH_BASIC-%BD_LVM_TECH_MODE_MODIFY
  */
 gboolean  bd_lvm_pvresize (const gchar *device, guint64 size, const BDExtraArg **extra, GError **error) {
     return _bd_lvm_pvresize (device, size, extra, error);
@@ -592,6 +638,8 @@ gboolean  (*_bd_lvm_pvremove) (const gchar *device, const BDExtraArg **extra, GE
  * @error: (out): place to store error (if any)
  *
  * Returns: whether the PV was successfully removed/destroyed or not
+ *
+ * Tech category: %BD_LVM_TECH_BASIC-%BD_LVM_TECH_MODE_REMOVE
  */
 gboolean  bd_lvm_pvremove (const gchar *device, const BDExtraArg **extra, GError **error) {
     return _bd_lvm_pvremove (device, extra, error);
@@ -619,6 +667,8 @@ gboolean  (*_bd_lvm_pvmove) (const gchar *src, const gchar *dest, const BDExtraA
  *
  * If @dest is %NULL, VG allocation rules are used for the extents from the @src
  * PV (see pvmove(8)).
+ *
+ * Tech category: %BD_LVM_TECH_BASIC-%BD_LVM_TECH_MODE_MODIFY
  */
 gboolean  bd_lvm_pvmove (const gchar *src, const gchar *dest, const BDExtraArg **extra, GError **error) {
     return _bd_lvm_pvmove (src, dest, extra, error);
@@ -646,6 +696,8 @@ gboolean  (*_bd_lvm_pvscan) (const gchar *device, gboolean update_cache, const B
  *
  * The @device argument is used only if @update_cache is %TRUE. Otherwise the
  * whole system is scanned for PVs.
+ *
+ * Tech category: %BD_LVM_TECH_BASIC-%BD_LVM_TECH_MODE_QUERY
  */
 gboolean  bd_lvm_pvscan (const gchar *device, gboolean update_cache, const BDExtraArg **extra, GError **error) {
     return _bd_lvm_pvscan (device, update_cache, extra, error);
@@ -668,6 +720,8 @@ BDLVMPVdata* (*_bd_lvm_pvinfo) (const gchar *device, GError **error) = bd_lvm_pv
  *
  * Returns: (transfer full): information about the PV on the given @device or
  * %NULL in case of error (the @error) gets populated in those cases)
+ *
+ * Tech category: %BD_LVM_TECH_BASIC-%BD_LVM_TECH_MODE_QUERY
  */
 BDLVMPVdata* bd_lvm_pvinfo (const gchar *device, GError **error) {
     return _bd_lvm_pvinfo (device, error);
@@ -688,6 +742,8 @@ BDLVMPVdata** (*_bd_lvm_pvs) (GError **error) = bd_lvm_pvs_stub;
  * @error: (out): place to store error (if any)
  *
  * Returns: (array zero-terminated=1): information about PVs found in the system
+ *
+ * Tech category: %BD_LVM_TECH_BASIC-%BD_LVM_TECH_MODE_QUERY
  */
 BDLVMPVdata** bd_lvm_pvs (GError **error) {
     return _bd_lvm_pvs (error);
@@ -713,6 +769,8 @@ gboolean  (*_bd_lvm_vgcreate) (const gchar *name, const gchar **pv_list, guint64
  * @error: (out): place to store error (if any)
  *
  * Returns: whether the VG @name was successfully created or not
+ *
+ * Tech category: %BD_LVM_TECH_BASIC-%BD_LVM_TECH_MODE_CREATE
  */
 gboolean  bd_lvm_vgcreate (const gchar *name, const gchar **pv_list, guint64 pe_size, const BDExtraArg **extra, GError **error) {
     return _bd_lvm_vgcreate (name, pv_list, pe_size, extra, error);
@@ -736,6 +794,8 @@ gboolean  (*_bd_lvm_vgremove) (const gchar *vg_name, const BDExtraArg **extra, G
  * @error: (out): place to store error (if any)
  *
  * Returns: whether the VG was successfully removed or not
+ *
+ * Tech category: %BD_LVM_TECH_BASIC-%BD_LVM_TECH_MODE_REMOVE
  */
 gboolean  bd_lvm_vgremove (const gchar *vg_name, const BDExtraArg **extra, GError **error) {
     return _bd_lvm_vgremove (vg_name, extra, error);
@@ -760,6 +820,8 @@ gboolean  (*_bd_lvm_vgrename) (const gchar *old_vg_name, const gchar *new_vg_nam
  * @error: (out): place to store error (if any)
  *
  * Returns: whether the VG was successfully renamed or not
+ *
+ * Tech category: %BD_LVM_TECH_BASIC-%BD_LVM_TECH_MODE_MODIFY
  */
 gboolean  bd_lvm_vgrename (const gchar *old_vg_name, const gchar *new_vg_name, const BDExtraArg **extra, GError **error) {
     return _bd_lvm_vgrename (old_vg_name, new_vg_name, extra, error);
@@ -783,6 +845,8 @@ gboolean  (*_bd_lvm_vgactivate) (const gchar *vg_name, const BDExtraArg **extra,
  * @error: (out): place to store error (if any)
  *
  * Returns: whether the VG was successfully activated or not
+ *
+ * Tech category: %BD_LVM_TECH_BASIC-%BD_LVM_TECH_MODE_MODIFY
  */
 gboolean  bd_lvm_vgactivate (const gchar *vg_name, const BDExtraArg **extra, GError **error) {
     return _bd_lvm_vgactivate (vg_name, extra, error);
@@ -806,6 +870,8 @@ gboolean  (*_bd_lvm_vgdeactivate) (const gchar *vg_name, const BDExtraArg **extr
  * @error: (out): place to store error (if any)
  *
  * Returns: whether the VG was successfully deactivated or not
+ *
+ * Tech category: %BD_LVM_TECH_BASIC-%BD_LVM_TECH_MODE_MODIFY
  */
 gboolean  bd_lvm_vgdeactivate (const gchar *vg_name, const BDExtraArg **extra, GError **error) {
     return _bd_lvm_vgdeactivate (vg_name, extra, error);
@@ -830,6 +896,8 @@ gboolean  (*_bd_lvm_vgextend) (const gchar *vg_name, const gchar *device, const 
  * @error: (out): place to store error (if any)
  *
  * Returns: whether the VG @vg_name was successfully extended with the given @device or not.
+ *
+ * Tech category: %BD_LVM_TECH_BASIC-%BD_LVM_TECH_MODE_MODIFY
  */
 gboolean  bd_lvm_vgextend (const gchar *vg_name, const gchar *device, const BDExtraArg **extra, GError **error) {
     return _bd_lvm_vgextend (vg_name, device, extra, error);
@@ -858,6 +926,8 @@ gboolean  (*_bd_lvm_vgreduce) (const gchar *vg_name, const gchar *device, const 
  *
  * Note: This function does not move extents off of the PV before removing
  *       it from the VG. You must do that first by calling #bd_lvm_pvmove.
+ *
+ * Tech category: %BD_LVM_TECH_BASIC-%BD_LVM_TECH_MODE_MODIFY
  */
 gboolean  bd_lvm_vgreduce (const gchar *vg_name, const gchar *device, const BDExtraArg **extra, GError **error) {
     return _bd_lvm_vgreduce (vg_name, device, extra, error);
@@ -880,6 +950,8 @@ BDLVMVGdata* (*_bd_lvm_vginfo) (const gchar *vg_name, GError **error) = bd_lvm_v
  *
  * Returns: (transfer full): information about the @vg_name VG or %NULL in case
  * of error (the @error) gets populated in those cases)
+ *
+ * Tech category: %BD_LVM_TECH_BASIC-%BD_LVM_TECH_MODE_QUERY
  */
 BDLVMVGdata* bd_lvm_vginfo (const gchar *vg_name, GError **error) {
     return _bd_lvm_vginfo (vg_name, error);
@@ -900,6 +972,8 @@ BDLVMVGdata** (*_bd_lvm_vgs) (GError **error) = bd_lvm_vgs_stub;
  * @error: (out): place to store error (if any)
  *
  * Returns: (array zero-terminated=1): information about VGs found in the system
+ *
+ * Tech category: %BD_LVM_TECH_BASIC-%BD_LVM_TECH_MODE_QUERY
  */
 BDLVMVGdata** bd_lvm_vgs (GError **error) {
     return _bd_lvm_vgs (error);
@@ -923,6 +997,8 @@ gchar* (*_bd_lvm_lvorigin) (const gchar *vg_name, const gchar *lv_name, GError *
  *
  * Returns: (transfer full): the origin volume for the @vg_name/@lv_name LV or
  * %NULL if failed to determine (@error) is set in those cases)
+ *
+ * Tech category: %BD_LVM_TECH_BASIC-%BD_LVM_TECH_MODE_QUERY
  */
 gchar* bd_lvm_lvorigin (const gchar *vg_name, const gchar *lv_name, GError **error) {
     return _bd_lvm_lvorigin (vg_name, lv_name, error);
@@ -951,6 +1027,8 @@ gboolean  (*_bd_lvm_lvcreate) (const gchar *vg_name, const gchar *lv_name, guint
  * @error: (out): place to store error (if any)
  *
  * Returns: whether the given @vg_name/@lv_name LV was successfully created or not
+ *
+ * Tech category: %BD_LVM_TECH_BASIC-%BD_LVM_TECH_MODE_CREATE
  */
 gboolean  bd_lvm_lvcreate (const gchar *vg_name, const gchar *lv_name, guint64 size, const gchar *type, const gchar **pv_list, const BDExtraArg **extra, GError **error) {
     return _bd_lvm_lvcreate (vg_name, lv_name, size, type, pv_list, extra, error);
@@ -976,6 +1054,8 @@ gboolean  (*_bd_lvm_lvremove) (const gchar *vg_name, const gchar *lv_name, gbool
  * @error: (out): place to store error (if any)
  *
  * Returns: whether the @vg_name/@lv_name LV was successfully removed or not
+ *
+ * Tech category: %BD_LVM_TECH_BASIC-%BD_LVM_TECH_MODE_REMOVE
  */
 gboolean  bd_lvm_lvremove (const gchar *vg_name, const gchar *lv_name, gboolean force, const BDExtraArg **extra, GError **error) {
     return _bd_lvm_lvremove (vg_name, lv_name, force, extra, error);
@@ -1002,6 +1082,8 @@ gboolean  (*_bd_lvm_lvrename) (const gchar *vg_name, const gchar *lv_name, const
  *
  * Returns: whether the @vg_name/@lv_name LV was successfully renamed to
  * @vg_name/@new_name or not
+ *
+ * Tech category: %BD_LVM_TECH_BASIC-%BD_LVM_TECH_MODE_MODIFY
  */
 gboolean  bd_lvm_lvrename (const gchar *vg_name, const gchar *lv_name, const gchar *new_name, const BDExtraArg **extra, GError **error) {
     return _bd_lvm_lvrename (vg_name, lv_name, new_name, extra, error);
@@ -1027,6 +1109,8 @@ gboolean  (*_bd_lvm_lvresize) (const gchar *vg_name, const gchar *lv_name, guint
  * @error: (out): place to store error (if any)
  *
  * Returns: whether the @vg_name/@lv_name LV was successfully resized or not
+ *
+ * Tech category: %BD_LVM_TECH_BASIC-%BD_LVM_TECH_MODE_MODIFY
  */
 gboolean  bd_lvm_lvresize (const gchar *vg_name, const gchar *lv_name, guint64 size, const BDExtraArg **extra, GError **error) {
     return _bd_lvm_lvresize (vg_name, lv_name, size, extra, error);
@@ -1052,6 +1136,8 @@ gboolean  (*_bd_lvm_lvactivate) (const gchar *vg_name, const gchar *lv_name, gbo
  * @error: (out): place to store error (if any)
  *
  * Returns: whether the @vg_name/@lv_name LV was successfully activated or not
+ *
+ * Tech category: %BD_LVM_TECH_BASIC-%BD_LVM_TECH_MODE_MODIFY
  */
 gboolean  bd_lvm_lvactivate (const gchar *vg_name, const gchar *lv_name, gboolean ignore_skip, const BDExtraArg **extra, GError **error) {
     return _bd_lvm_lvactivate (vg_name, lv_name, ignore_skip, extra, error);
@@ -1076,6 +1162,8 @@ gboolean  (*_bd_lvm_lvdeactivate) (const gchar *vg_name, const gchar *lv_name, c
  * @error: (out): place to store error (if any)
  *
  * Returns: whether the @vg_name/@lv_name LV was successfully deactivated or not
+ *
+ * Tech category: %BD_LVM_TECH_BASIC-%BD_LVM_TECH_MODE_MODIFY
  */
 gboolean  bd_lvm_lvdeactivate (const gchar *vg_name, const gchar *lv_name, const BDExtraArg **extra, GError **error) {
     return _bd_lvm_lvdeactivate (vg_name, lv_name, extra, error);
@@ -1103,6 +1191,8 @@ gboolean  (*_bd_lvm_lvsnapshotcreate) (const gchar *vg_name, const gchar *origin
  *
  * Returns: whether the @snapshot_name snapshot of the @vg_name/@origin_name LV
  * was successfully created or not.
+ *
+ * Tech category: %BD_LVM_TECH_BASIC_SNAP-%BD_LVM_TECH_MODE_CREATE
  */
 gboolean  bd_lvm_lvsnapshotcreate (const gchar *vg_name, const gchar *origin_name, const gchar *snapshot_name, guint64 size, const BDExtraArg **extra, GError **error) {
     return _bd_lvm_lvsnapshotcreate (vg_name, origin_name, snapshot_name, size, extra, error);
@@ -1127,6 +1217,8 @@ gboolean  (*_bd_lvm_lvsnapshotmerge) (const gchar *vg_name, const gchar *snapsho
  * @error: (out): place to store error (if any)
  *
  * Returns: whether the @vg_name/@snapshot_name LV snapshot was successfully merged or not
+ *
+ * Tech category: %BD_LVM_TECH_BASIC_SNAP-%BD_LVM_TECH_MODE_MODIFY
  */
 gboolean  bd_lvm_lvsnapshotmerge (const gchar *vg_name, const gchar *snapshot_name, const BDExtraArg **extra, GError **error) {
     return _bd_lvm_lvsnapshotmerge (vg_name, snapshot_name, extra, error);
@@ -1150,6 +1242,8 @@ BDLVMLVdata* (*_bd_lvm_lvinfo) (const gchar *vg_name, const gchar *lv_name, GErr
  *
  * Returns: (transfer full): information about the @vg_name/@lv_name LV or %NULL in case
  * of error (the @error) gets populated in those cases)
+ *
+ * Tech category: %BD_LVM_TECH_BASIC-%BD_LVM_TECH_MODE_QUERY
  */
 BDLVMLVdata* bd_lvm_lvinfo (const gchar *vg_name, const gchar *lv_name, GError **error) {
     return _bd_lvm_lvinfo (vg_name, lv_name, error);
@@ -1172,6 +1266,8 @@ BDLVMLVdata** (*_bd_lvm_lvs) (const gchar *vg_name, GError **error) = bd_lvm_lvs
  *
  * Returns: (array zero-terminated=1): information about LVs found in the given
  * @vg_name VG or in system if @vg_name is %NULL
+ *
+ * Tech category: %BD_LVM_TECH_BASIC-%BD_LVM_TECH_MODE_QUERY
  */
 BDLVMLVdata** bd_lvm_lvs (const gchar *vg_name, GError **error) {
     return _bd_lvm_lvs (vg_name, error);
@@ -1201,6 +1297,8 @@ gboolean  (*_bd_lvm_thpoolcreate) (const gchar *vg_name, const gchar *lv_name, g
  * @error: (out): place to store error (if any)
  *
  * Returns: whether the @vg_name/@lv_name thin pool was successfully created or not
+ *
+ * Tech category: %BD_LVM_TECH_THIN-%BD_LVM_TECH_MODE_CREATE
  */
 gboolean  bd_lvm_thpoolcreate (const gchar *vg_name, const gchar *lv_name, guint64 size, guint64 md_size, guint64 chunk_size, const gchar *profile, const BDExtraArg **extra, GError **error) {
     return _bd_lvm_thpoolcreate (vg_name, lv_name, size, md_size, chunk_size, profile, extra, error);
@@ -1227,6 +1325,8 @@ gboolean  (*_bd_lvm_thlvcreate) (const gchar *vg_name, const gchar *pool_name, c
  * @error: (out): place to store error (if any)
  *
  * Returns: whether the @vg_name/@lv_name thin LV was successfully created or not
+ *
+ * Tech category: %BD_LVM_TECH_THIN-%BD_LVM_TECH_MODE_CREATE
  */
 gboolean  bd_lvm_thlvcreate (const gchar *vg_name, const gchar *pool_name, const gchar *lv_name, guint64 size, const BDExtraArg **extra, GError **error) {
     return _bd_lvm_thlvcreate (vg_name, pool_name, lv_name, size, extra, error);
@@ -1250,6 +1350,8 @@ gchar* (*_bd_lvm_thlvpoolname) (const gchar *vg_name, const gchar *lv_name, GErr
  *
  * Returns: (transfer full): the name of the pool volume for the @vg_name/@lv_name
  * thin LV or %NULL if failed to determine (@error) is set in those cases)
+ *
+ * Tech category: %BD_LVM_TECH_THIN-%BD_LVM_TECH_MODE_QUERY
  */
 gchar* bd_lvm_thlvpoolname (const gchar *vg_name, const gchar *lv_name, GError **error) {
     return _bd_lvm_thlvpoolname (vg_name, lv_name, error);
@@ -1277,6 +1379,8 @@ gboolean  (*_bd_lvm_thsnapshotcreate) (const gchar *vg_name, const gchar *origin
  *
  * Returns: whether the @snapshot_name snapshot of the @vg_name/@origin_name
  * thin LV was successfully created or not.
+ *
+ * Tech category: %BD_LVM_TECH_THIN-%BD_LVM_TECH_MODE_CREATE
  */
 gboolean  bd_lvm_thsnapshotcreate (const gchar *vg_name, const gchar *origin_name, const gchar *snapshot_name, const gchar *pool_name, const BDExtraArg **extra, GError **error) {
     return _bd_lvm_thsnapshotcreate (vg_name, origin_name, snapshot_name, pool_name, extra, error);
@@ -1300,6 +1404,8 @@ gboolean  (*_bd_lvm_set_global_config) (const gchar *new_config, GError **error)
  *
  * Returns: whether the new requested global config @new_config was successfully
  *          set or not
+ *
+ * Tech category: %BD_LVM_TECH_GLOB_CONF no mode (it is ignored)
  */
 gboolean  bd_lvm_set_global_config (const gchar *new_config, GError **error) {
     return _bd_lvm_set_global_config (new_config, error);
@@ -1321,6 +1427,8 @@ gchar* (*_bd_lvm_get_global_config) (GError **error) = bd_lvm_get_global_config_
  *
  * Returns: a copy of a string representation of the currently set LVM global
  *          configuration
+ *
+ * Tech category: %BD_LVM_TECH_GLOB_CONF no mode (it is ignored)
  */
 gchar* bd_lvm_get_global_config (GError **error) {
     return _bd_lvm_get_global_config (error);
@@ -1342,6 +1450,8 @@ guint64  (*_bd_lvm_cache_get_default_md_size) (guint64 cache_size, GError **erro
  * @error: (out): place to store error (if any)
  *
  * Returns: recommended default size of the cache metadata LV or 0 in case of error
+ *
+ * Tech category: %BD_LVM_TECH_CACHE_CALCS no mode (it is ignored)
  */
 guint64  bd_lvm_cache_get_default_md_size (guint64 cache_size, GError **error) {
     return _bd_lvm_cache_get_default_md_size (cache_size, error);
@@ -1363,6 +1473,8 @@ const gchar* (*_bd_lvm_cache_get_mode_str) (BDLVMCacheMode mode, GError **error)
  * @error: (out): place to store error (if any)
  *
  * Returns: string representation of @mode or %NULL in case of error
+ *
+ * Tech category: always provided/supported
  */
 const gchar* bd_lvm_cache_get_mode_str (BDLVMCacheMode mode, GError **error) {
     return _bd_lvm_cache_get_mode_str (mode, error);
@@ -1385,6 +1497,8 @@ BDLVMCacheMode  (*_bd_lvm_cache_get_mode_from_str) (const gchar *mode_str, GErro
  *
  * Returns: cache mode for the @mode_str or %BD_LVM_CACHE_MODE_UNKNOWN if
  *          failed to determine
+ *
+ * Tech category: always provided/supported
  */
 BDLVMCacheMode  bd_lvm_cache_get_mode_from_str (const gchar *mode_str, GError **error) {
     return _bd_lvm_cache_get_mode_from_str (mode_str, error);
@@ -1414,6 +1528,8 @@ gboolean  (*_bd_lvm_cache_create_pool) (const gchar *vg_name, const gchar *pool_
  * @error: (out): place to store error (if any)
  *
  * Returns: whether the cache pool @vg_name/@pool_name was successfully created or not
+ *
+ * Tech category: %BD_LVM_TECH_CACHE-%BD_LVM_TECH_MODE_CREATE
  */
 gboolean  bd_lvm_cache_create_pool (const gchar *vg_name, const gchar *pool_name, guint64 pool_size, guint64 md_size, BDLVMCacheMode mode, BDLVMCachePoolFlags flags, const gchar **fast_pvs, GError **error) {
     return _bd_lvm_cache_create_pool (vg_name, pool_name, pool_size, md_size, mode, flags, fast_pvs, error);
@@ -1439,6 +1555,8 @@ gboolean  (*_bd_lvm_cache_attach) (const gchar *vg_name, const gchar *data_lv, c
  * @error: (out): place to store error (if any)
  *
  * Returns: whether the @cache_pool_lv was successfully attached to the @data_lv or not
+ *
+ * Tech category: %BD_LVM_TECH_CACHE-%BD_LVM_TECH_MODE_MODIFY
  */
 gboolean  bd_lvm_cache_attach (const gchar *vg_name, const gchar *data_lv, const gchar *cache_pool_lv, const BDExtraArg **extra, GError **error) {
     return _bd_lvm_cache_attach (vg_name, data_lv, cache_pool_lv, extra, error);
@@ -1466,6 +1584,8 @@ gboolean  (*_bd_lvm_cache_detach) (const gchar *vg_name, const gchar *cached_lv,
  * Returns: whether the cache was successfully detached from the @cached_lv or not
  *
  * Note: synces the cache first
+ *
+ * Tech category: %BD_LVM_TECH_CACHE-%BD_LVM_TECH_MODE_MODIFY
  */
 gboolean  bd_lvm_cache_detach (const gchar *vg_name, const gchar *cached_lv, gboolean destroy, const BDExtraArg **extra, GError **error) {
     return _bd_lvm_cache_detach (vg_name, cached_lv, destroy, extra, error);
@@ -1495,6 +1615,8 @@ gboolean  (*_bd_lvm_cache_create_cached_lv) (const gchar *vg_name, const gchar *
  * @error: (out): place to store error (if any)
  *
  * Returns: whether the cached LV @lv_name was successfully created or not
+ *
+ * Tech category: %BD_LVM_TECH_CACHE-%BD_LVM_TECH_MODE_CREATE
  */
 gboolean  bd_lvm_cache_create_cached_lv (const gchar *vg_name, const gchar *lv_name, guint64 data_size, guint64 cache_size, guint64 md_size, BDLVMCacheMode mode, BDLVMCachePoolFlags flags, const gchar **slow_pvs, const gchar **fast_pvs, GError **error) {
     return _bd_lvm_cache_create_cached_lv (vg_name, lv_name, data_size, cache_size, md_size, mode, flags, slow_pvs, fast_pvs, error);
@@ -1517,6 +1639,8 @@ gchar* (*_bd_lvm_cache_pool_name) (const gchar *vg_name, const gchar *cached_lv,
  * @error: (out): place to store error (if any)
  *
  * Returns: name of the cache pool LV used by the @cached_lv or %NULL in case of error
+ *
+ * Tech category: %BD_LVM_TECH_CACHE-%BD_LVM_TECH_MODE_QUERY
  */
 gchar* bd_lvm_cache_pool_name (const gchar *vg_name, const gchar *cached_lv, GError **error) {
     return _bd_lvm_cache_pool_name (vg_name, cached_lv, error);
@@ -1539,6 +1663,8 @@ BDLVMCacheStats* (*_bd_lvm_cache_stats) (const gchar *vg_name, const gchar *cach
  * @error: (out): place to store error (if any)
  *
  * Returns: stats for the @cached_lv or %NULL in case of error
+ *
+ * Tech category: %BD_LVM_TECH_CACHE-%BD_LVM_TECH_MODE_QUERY
  */
 BDLVMCacheStats* bd_lvm_cache_stats (const gchar *vg_name, const gchar *cached_lv, GError **error) {
     return _bd_lvm_cache_stats (vg_name, cached_lv, error);
@@ -1562,6 +1688,8 @@ gchar* (*_bd_lvm_data_lv_name) (const gchar *vg_name, const gchar *lv_name, GErr
  *
  * Returns: (transfer full): the name of the (internal) data LV of the
  * @vg_name/@lv_name LV
+ *
+ * Tech category: %BD_LVM_TECH_BASIC-%BD_LVM_TECH_MODE_QUERY
  */
 gchar* bd_lvm_data_lv_name (const gchar *vg_name, const gchar *lv_name, GError **error) {
     return _bd_lvm_data_lv_name (vg_name, lv_name, error);
@@ -1585,6 +1713,8 @@ gchar* (*_bd_lvm_metadata_lv_name) (const gchar *vg_name, const gchar *lv_name, 
  *
  * Returns: (transfer full): the name of the (internal) metadata LV of the
  * @vg_name/@lv_name LV
+ *
+ * Tech category: %BD_LVM_TECH_BASIC-%BD_LVM_TECH_MODE_QUERY
  */
 gchar* bd_lvm_metadata_lv_name (const gchar *vg_name, const gchar *lv_name, GError **error) {
     return _bd_lvm_metadata_lv_name (vg_name, lv_name, error);
@@ -1615,6 +1745,8 @@ gboolean  (*_bd_lvm_thpool_convert) (const gchar *vg_name, const gchar *data_lv,
  *
  * Returns: whether the new thin pool was successfully created from @data_lv and
  *          @metadata_lv or not
+ *
+ * Tech category: %BD_LVM_TECH_THIN-%BD_LVM_TECH_MODE_CREATE
  */
 gboolean  bd_lvm_thpool_convert (const gchar *vg_name, const gchar *data_lv, const gchar *metadata_lv, const gchar *name, const BDExtraArg **extra, GError **error) {
     return _bd_lvm_thpool_convert (vg_name, data_lv, metadata_lv, name, extra, error);
@@ -1645,6 +1777,8 @@ gboolean  (*_bd_lvm_cache_pool_convert) (const gchar *vg_name, const gchar *data
  *
  * Returns: whether the new cache pool was successfully created from @data_lv and
  *          @metadata_lv or not
+ *
+ * Tech category: %BD_LVM_TECH_CACHE-%BD_LVM_TECH_MODE_CREATE
  */
 gboolean  bd_lvm_cache_pool_convert (const gchar *vg_name, const gchar *data_lv, const gchar *metadata_lv, const gchar *name, const BDExtraArg **extra, GError **error) {
     return _bd_lvm_cache_pool_convert (vg_name, data_lv, metadata_lv, name, extra, error);
@@ -1680,6 +1814,11 @@ gpointer load_lvm_from_plugin(const gchar *so_name) {
         dlclose(handle);
         return NULL;
     }    init_fn = NULL;
+
+    dlerror();
+    * (void**) (&_bd_lvm_is_tech_avail) = dlsym(handle, "bd_lvm_is_tech_avail");
+    if ((error = dlerror()) != NULL)
+        g_warning("failed to load bd_lvm_is_tech_avail: %s", error);
 
     dlerror();
     * (void**) (&_bd_lvm_is_supported_pe_size) = dlsym(handle, "bd_lvm_is_supported_pe_size");
@@ -1963,6 +2102,7 @@ gboolean unload_lvm (gpointer handle) {
     char *error = NULL;
     gboolean (*close_fn) (void) = NULL;
 
+    _bd_lvm_is_tech_avail = bd_lvm_is_tech_avail_stub;
     _bd_lvm_is_supported_pe_size = bd_lvm_is_supported_pe_size_stub;
     _bd_lvm_get_supported_pe_sizes = bd_lvm_get_supported_pe_sizes_stub;
     _bd_lvm_get_max_lv_size = bd_lvm_get_max_lv_size_stub;

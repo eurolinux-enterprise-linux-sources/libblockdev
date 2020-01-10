@@ -1,3 +1,7 @@
+if WITH_FS
+SUBDIRS = . fs
+endif
+
 lib_LTLIBRARIES =
 
 if WITH_BTRFS
@@ -32,6 +36,10 @@ if WITH_MPATH
 lib_LTLIBRARIES += libbd_mpath.la
 endif
 
+if WITH_NVDIMM
+lib_LTLIBRARIES += libbd_nvdimm.la
+endif
+
 if WITH_SWAP
 lib_LTLIBRARIES += libbd_swap.la
 endif
@@ -48,13 +56,12 @@ if WITH_PART
 lib_LTLIBRARIES += libbd_part.la
 endif
 
-if WITH_FS
-lib_LTLIBRARIES += libbd_fs.la
+if WITH_S390
+lib_LTLIBRARIES += libbd_s390.la
 endif
 
-
-if ON_S390
-lib_LTLIBRARIES += libbd_s390.la
+if WITH_VDO
+lib_LTLIBRARIES += libbd_vdo.la
 endif
 
 
@@ -63,24 +70,34 @@ libbd_btrfs_la_CFLAGS = $(GLIB_CFLAGS) $(BYTESIZE_CFLAGS) -Wall -Wextra -Werror
 libbd_btrfs_la_LIBADD = $(GLIB_LIBS) $(BYTESIZE_LIBS) ${builddir}/../utils/libbd_utils.la
 libbd_btrfs_la_LDFLAGS = -L${srcdir}/../utils/ -version-info 2:0:0 -Wl,--no-undefined
 libbd_btrfs_la_CPPFLAGS = -I${builddir}/../../include/
-libbd_btrfs_la_SOURCES = btrfs.c btrfs.h
+libbd_btrfs_la_SOURCES = btrfs.c btrfs.h check_deps.c check_deps.h
 endif
 
 if WITH_CRYPTO
+if WITH_ESCROW
 libbd_crypto_la_CFLAGS = $(GLIB_CFLAGS) $(CRYPTSETUP_CFLAGS) $(NSS_CFLAGS) -Wall -Wextra -Werror
 libbd_crypto_la_LIBADD = $(GLIB_LIBS) $(CRYPTSETUP_LIBS) $(NSS_LIBS) -lvolume_key ${builddir}/../utils/libbd_utils.la
+else
+libbd_crypto_la_CFLAGS = $(GLIB_CFLAGS) $(CRYPTSETUP_CFLAGS) -Wall -Wextra -Werror
+libbd_crypto_la_LIBADD = $(GLIB_LIBS) $(CRYPTSETUP_LIBS) ${builddir}/../utils/libbd_utils.la
+endif
 libbd_crypto_la_LDFLAGS = -L${srcdir}/../utils/ -version-info 2:0:0 -Wl,--no-undefined
 libbd_crypto_la_CPPFLAGS = -I${builddir}/../../include/
 libbd_crypto_la_SOURCES = crypto.c crypto.h
 endif
 
 if WITH_DM
-libbd_dm_la_CFLAGS = $(GLIB_CFLAGS) $(DEVMAPPER_CFLAGS) $(UDEV_CFLAGS) -Wall -Wextra -Werror
-libbd_dm_la_LIBADD = $(GLIB_LIBS) $(DEVMAPPER_LIBS) $(UDEV_LIBS) -ldmraid ${builddir}/../utils/libbd_utils.la
+libbd_dm_la_CFLAGS = $(GLIB_CFLAGS) $(DEVMAPPER_CFLAGS) -Wall -Wextra -Werror
+libbd_dm_la_LIBADD = $(GLIB_LIBS) $(DEVMAPPER_LIBS) ${builddir}/../utils/libbd_utils.la
 libbd_dm_la_LDFLAGS = -L${srcdir}/../utils/ -version-info 2:0:0 -Wl,--no-undefined
+libbd_dm_la_CPPFLAGS = -I${builddir}/../../include/
+libbd_dm_la_SOURCES = dm.c dm.h check_deps.c check_deps.h
+if WITH_DMRAID
+libbd_dm_la_CFLAGS += $(UDEV_CFLAGS)
+libbd_dm_la_LIBADD += $(UDEV_LIBS) -ldmraid
 # Dear author of libdmdraid, VERSION really is not a good name for an enum member!
-libbd_dm_la_CPPFLAGS = -I${builddir}/../../include/ -UVERSION
-libbd_dm_la_SOURCES = dm.c dm.h
+libbd_dm_la_CPPFLAGS += -UVERSION
+endif
 endif
 
 if WITH_LOOP
@@ -96,7 +113,7 @@ libbd_lvm_la_CFLAGS = $(GLIB_CFLAGS) $(DEVMAPPER_CFLAGS) -Wall -Wextra -Werror
 libbd_lvm_la_LIBADD = -lm $(GLIB_LIBS) $(DEVMAPPER_LIBS) ${builddir}/../utils/libbd_utils.la
 libbd_lvm_la_LDFLAGS = -L${srcdir}/../utils/ -version-info 2:0:0 -Wl,--no-undefined
 libbd_lvm_la_CPPFLAGS = -I${builddir}/../../include/
-libbd_lvm_la_SOURCES = lvm.c lvm.h
+libbd_lvm_la_SOURCES = lvm.c lvm.h check_deps.c check_deps.h
 endif
 
 if WITH_LVM_DBUS
@@ -104,7 +121,7 @@ libbd_lvm_dbus_la_CFLAGS = $(GLIB_CFLAGS) $(GIO_CFLAGS) $(DEVMAPPER_CFLAGS) -Wal
 libbd_lvm_dbus_la_LIBADD = -lm $(GLIB_LIBS) $(GIO_LIBS) $(DEVMAPPER_LIBS) ${builddir}/../utils/libbd_utils.la
 libbd_lvm_dbus_la_LDFLAGS = -L${srcdir}/../utils/ -version-info 2:0:0 -Wl,--no-undefined
 libbd_lvm_dbus_la_CPPFLAGS = -I${builddir}/../../include/
-libbd_lvm_dbus_la_SOURCES = lvm-dbus.c lvm.h
+libbd_lvm_dbus_la_SOURCES = lvm-dbus.c lvm.h check_deps.c check_deps.h
 endif
 
 if WITH_MDRAID
@@ -112,7 +129,7 @@ libbd_mdraid_la_CFLAGS = $(GLIB_CFLAGS) $(BYTESIZE_CFLAGS) -Wall -Wextra -Werror
 libbd_mdraid_la_LIBADD = $(GLIB_LIBS) $(BYTESIZE_LIBS) ${builddir}/../utils/libbd_utils.la
 libbd_mdraid_la_LDFLAGS = -L${srcdir}/../utils/ -version-info 2:0:0 -Wl,--no-undefined
 libbd_mdraid_la_CPPFLAGS = -I${builddir}/../../include/
-libbd_mdraid_la_SOURCES = mdraid.c mdraid.h
+libbd_mdraid_la_SOURCES = mdraid.c mdraid.h check_deps.c check_deps.h
 endif
 
 if WITH_MPATH
@@ -120,7 +137,15 @@ libbd_mpath_la_CFLAGS = $(GLIB_CFLAGS) $(DEVMAPPER_CFLAGS) -Wall -Wextra -Werror
 libbd_mpath_la_LIBADD = $(GLIB_LIBS) $(DEVMAPPER_LIBS) ${builddir}/../utils/libbd_utils.la
 libbd_mpath_la_LDFLAGS = -L${srcdir}/../utils/ -version-info 2:0:0 -Wl,--no-undefined
 libbd_mpath_la_CPPFLAGS = -I${builddir}/../../include/
-libbd_mpath_la_SOURCES = mpath.c mpath.h
+libbd_mpath_la_SOURCES = mpath.c mpath.h check_deps.c check_deps.h
+endif
+
+if WITH_NVDIMM
+libbd_nvdimm_la_CFLAGS = $(GLIB_CFLAGS) $(UUID_CFLAGS) $(NDCTL_CFLAGS) -Wall -Wextra -Werror
+libbd_nvdimm_la_LIBADD = $(GLIB_LIBS) $(UUID_LIBS) $(NDCTL_LIBS) ${builddir}/../utils/libbd_utils.la
+libbd_nvdimm_la_LDFLAGS = -L${srcdir}/../utils/ -version-info 2:0:0 -Wl,--no-undefined
+libbd_nvdimm_la_CPPFLAGS = -I${builddir}/../../include/
+libbd_nvdimm_la_SOURCES = nvdimm.c nvdimm.h check_deps.c check_deps.h
 endif
 
 if WITH_SWAP
@@ -128,24 +153,24 @@ libbd_swap_la_CFLAGS = $(GLIB_CFLAGS) -Wall -Wextra -Werror
 libbd_swap_la_LIBADD = $(GLIB_LIBS) ${builddir}/../utils/libbd_utils.la
 libbd_swap_la_LDFLAGS = -L${srcdir}/../utils/ -version-info 2:0:0 -Wl,--no-undefined
 libbd_swap_la_CPPFLAGS = -I${builddir}/../../include/
-libbd_swap_la_SOURCES = swap.c swap.h
+libbd_swap_la_SOURCES = swap.c swap.h check_deps.c check_deps.h
 endif
 
 if WITH_KBD
-libbd_kbd_la_CFLAGS = $(GLIB_CFLAGS) $(KMOD_CFLAGS) -Wall -Wextra -Werror
-libbd_kbd_la_LIBADD = $(GLIB_LIBS) $(KMOD_LIBS) ${builddir}/../utils/libbd_utils.la
+libbd_kbd_la_CFLAGS = $(GLIB_CFLAGS) $(BYTESIZE_CFLAGS) -Wall -Wextra -Werror
+libbd_kbd_la_LIBADD = $(GLIB_LIBS) $(BYTESIZE_LIBS) ${builddir}/../utils/libbd_utils.la
 libbd_kbd_la_LDFLAGS = -L${srcdir}/../utils/ -version-info 2:0:0 -Wl,--no-undefined
 libbd_kbd_la_CPPFLAGS = -I${builddir}/../../include/
-libbd_kbd_la_SOURCES = kbd.c kbd.h
+libbd_kbd_la_SOURCES = kbd.c kbd.h check_deps.c check_deps.h
 endif
 
-if ON_S390
+if WITH_S390
 libbd_s390_la_CFLAGS = $(GLIB_CFLAGS) -Wall -Wextra -Werror
 libbd_s390_la_LIBADD = $(GLIB_LIBS) ${builddir}/../utils/libbd_utils.la
 libbd_s390_la_LDFLAGS = -L${srcdir}/../utils/ -version-info 2:0:0 -Wl,--no-undefined
 libbd_s390_la_CPPFLAGS = -I${srcdir}/../utils/
 libbd_s390_la_CPPFLAGS = -I${builddir}/../../include/
-libbd_s390_la_SOURCES = s390.c s390.h
+libbd_s390_la_SOURCES = s390.c s390.h check_deps.c check_deps.h
 endif
 
 if WITH_PART
@@ -153,15 +178,7 @@ libbd_part_la_CFLAGS = $(GLIB_CFLAGS) $(PARTED_CFLAGS) -Wall -Wextra -Werror
 libbd_part_la_LIBADD = -lm $(GLIB_LIBS) $(PARTED_LIBS) ${builddir}/../utils/libbd_utils.la ${builddir}/libbd_part_err.la
 libbd_part_la_LDFLAGS = -L${srcdir}/../utils/ -version-info 2:0:0 -Wl,--no-undefined
 libbd_part_la_CPPFLAGS = -I${builddir}/../../include/
-libbd_part_la_SOURCES = part.c part.h
-endif
-
-if WITH_FS
-libbd_fs_la_CFLAGS = $(GLIB_CFLAGS) $(BLKID_CFLAGS) $(PARTED_CFLAGS) $(PARTED_FS_CFLAGS) $(MOUNT_CFLAGS) -Wall -Wextra -Werror
-libbd_fs_la_LIBADD = $(GLIB_LIBS) $(BLKID_LIBS) $(PARTED_LIBS) $(PARTED_FS_LIBS) $(MOUNT_LIBS) ${builddir}/../utils/libbd_utils.la ${builddir}/libbd_part_err.la
-libbd_fs_la_LDFLAGS = -L${srcdir}/../utils/ -version-info 2:0:0 -Wl,--no-undefined
-libbd_fs_la_CPPFLAGS = -I${builddir}/../../include/
-libbd_fs_la_SOURCES = fs.c fs.h
+libbd_part_la_SOURCES = part.c part.h check_deps.c check_deps.h
 endif
 
 if WITH_PART_O_WITH_FS
@@ -170,6 +187,14 @@ libbd_part_err_la_LIBADD = $(GLIB_LIBS) $(PARTED_LIBS) $(PARTED_FS_LIBS) ${build
 libbd_part_err_la_LDFLAGS = -L${srcdir}/ -version-info 2:0:0 -Wl,--no-undefined
 libbd_part_err_la_CPPFLAGS = -I${builddir}/../../include/
 libbd_part_err_la_SOURCES = part_err.c part_err.h
+endif
+
+if WITH_VDO
+libbd_vdo_la_CFLAGS = $(GLIB_CFLAGS) $(BYTESIZE_CFLAGS) $(YAML_CFLAGS) -Wall -Wextra -Werror
+libbd_vdo_la_LIBADD = -lm $(GLIB_LIBS) $(BYTESIZE_LIBS) $(YAML_LIBS) ${builddir}/../utils/libbd_utils.la
+libbd_vdo_la_LDFLAGS = -L${srcdir}/../utils/ -version-info 2:0:0 -Wl,--no-undefined
+libbd_vdo_la_CPPFLAGS = -I${builddir}/../../include/
+libbd_vdo_la_SOURCES = vdo.c vdo.h check_deps.c check_deps.h
 endif
 
 libincludedir = $(includedir)/blockdev
@@ -203,6 +228,10 @@ if WITH_MPATH
 libinclude_HEADERS += mpath.h
 endif
 
+if WITH_NVDIMM
+libinclude_HEADERS += nvdimm.h
+endif
+
 if WITH_SWAP
 libinclude_HEADERS += swap.h
 endif
@@ -221,8 +250,12 @@ endif
 
 noinst_HEADERS = part_err.h
 
-if ON_S390
+if WITH_S390
 libinclude_HEADERS += s390.h
+endif
+
+if WITH_VDO
+libinclude_HEADERS += vdo.h
 endif
 
 MAINTAINERCLEANFILES = Makefile.in

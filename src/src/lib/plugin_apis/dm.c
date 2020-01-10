@@ -2,11 +2,13 @@ GQuark  bd_dm_error_quark (void) {
         return g_quark_from_static_string ("g-bd-dm-error-quark");
 }
 
-static const gchar const * const dm_functions[] = {
+static const gchar* const dm_functions[] = {
+    "bd_dm_is_tech_avail",
     "bd_dm_create_linear",
     "bd_dm_remove",
     "bd_dm_name_from_node",
     "bd_dm_node_from_name",
+    "bd_dm_get_subsystem_from_name",
     "bd_dm_map_exists",
     "bd_dm_get_member_raid_sets",
     "bd_dm_activate_raid_set",
@@ -14,15 +16,38 @@ static const gchar const * const dm_functions[] = {
     "bd_dm_get_raid_set_type",
     NULL};
 
-gchar const * const * get_dm_functions (void) {
+const gchar* const* get_dm_functions (void) {
     return dm_functions;
 }
 
-static const guint8 dm_num_functions = 9;
+static const guint8 dm_num_functions = 11;
 
 guint8 get_dm_num_functions (void) {
     return dm_num_functions;
 }
+
+gboolean  bd_dm_is_tech_avail_stub (BDDMTech tech, guint64 mode, GError **error) {
+    g_critical ("The function 'bd_dm_is_tech_avail' called, but not implemented!");
+    g_set_error (error, BD_INIT_ERROR, BD_INIT_ERROR_NOT_IMPLEMENTED,
+                "The function 'bd_dm_is_tech_avail' called, but not implemented!");
+    return FALSE;
+}
+
+gboolean  (*_bd_dm_is_tech_avail) (BDDMTech tech, guint64 mode, GError **error) = bd_dm_is_tech_avail_stub;
+
+/**
+ * bd_dm_is_tech_avail:
+ * @tech: the queried tech
+ * @mode: a bit mask of queried modes of operation (#BDDMTechMode) for @tech
+ * @error: (out): place to store error (details about why the @tech-@mode combination is not available)
+ *
+ * Returns: whether the @tech-@mode combination is avaible -- supported by the
+ *          plugin implementation and having all the runtime dependencies available
+ */
+gboolean  bd_dm_is_tech_avail (BDDMTech tech, guint64 mode, GError **error) {
+    return _bd_dm_is_tech_avail (tech, mode, error);
+}
+
 
 gboolean  bd_dm_create_linear_stub (const gchar *map_name, const gchar *device, guint64 length, const gchar *uuid, GError **error) {
     g_critical ("The function 'bd_dm_create_linear' called, but not implemented!");
@@ -43,6 +68,8 @@ gboolean  (*_bd_dm_create_linear) (const gchar *map_name, const gchar *device, g
  *
  * Returns: whether the new linear mapping @map_name was successfully created
  * for the @device or not
+ *
+ * Tech category: %BD_DM_TECH_MAP-%BD_DM_TECH_MODE_CREATE_ACTIVATE
  */
 gboolean  bd_dm_create_linear (const gchar *map_name, const gchar *device, guint64 length, const gchar *uuid, GError **error) {
     return _bd_dm_create_linear (map_name, device, length, uuid, error);
@@ -64,6 +91,8 @@ gboolean  (*_bd_dm_remove) (const gchar *map_name, GError **error) = bd_dm_remov
  * @error: (out): place to store error (if any)
  *
  * Returns: whether the @map_name map was successfully removed or not
+ *
+ * Tech category: %BD_DM_TECH_MAP-%BD_DM_TECH_MODE_REMOVE_DEACTIVATE
  */
 gboolean  bd_dm_remove (const gchar *map_name, GError **error) {
     return _bd_dm_remove (map_name, error);
@@ -86,6 +115,8 @@ gchar* (*_bd_dm_name_from_node) (const gchar *dm_node, GError **error) = bd_dm_n
  *
  * Returns: map name of the map providing the @dm_node device or %NULL
  * (@error) contains the error in such cases)
+ *
+ * Tech category: %BD_DM_TECH_MAP-%BD_DM_TECH_MODE_QUERY
  */
 gchar* bd_dm_name_from_node (const gchar *dm_node, GError **error) {
     return _bd_dm_name_from_node (dm_node, error);
@@ -108,9 +139,34 @@ gchar* (*_bd_dm_node_from_name) (const gchar *map_name, GError **error) = bd_dm_
  *
  * Returns: DM node name for the @map_name map or %NULL (@error) contains
  * the error in such cases)
+ *
+ * Tech category: %BD_DM_TECH_MAP-%BD_DM_TECH_MODE_QUERY
  */
 gchar* bd_dm_node_from_name (const gchar *map_name, GError **error) {
     return _bd_dm_node_from_name (map_name, error);
+}
+
+
+gchar* bd_dm_get_subsystem_from_name_stub (const gchar *device_name, GError **error) {
+    g_critical ("The function 'bd_dm_get_subsystem_from_name' called, but not implemented!");
+    g_set_error (error, BD_INIT_ERROR, BD_INIT_ERROR_NOT_IMPLEMENTED,
+                "The function 'bd_dm_get_subsystem_from_name' called, but not implemented!");
+    return NULL;
+}
+
+gchar* (*_bd_dm_get_subsystem_from_name) (const gchar *device_name, GError **error) = bd_dm_get_subsystem_from_name_stub;
+
+/**
+ * bd_dm_get_subsystem_from_name:
+ * @device_name: name of the device
+ * @error: (out): place to store error (if any)
+ *
+ * Returns: subsystem of the given device
+ *
+ * Tech category: %BD_DM_TECH_MAP-%BD_DM_TECH_QUERY
+ */
+gchar* bd_dm_get_subsystem_from_name (const gchar *device_name, GError **error) {
+    return _bd_dm_get_subsystem_from_name (device_name, error);
 }
 
 
@@ -132,6 +188,8 @@ gboolean  (*_bd_dm_map_exists) (const gchar *map_name, gboolean live_only, gbool
  *
  * Returns: whether the given @map_name exists (and is live if @live_only is
  * %TRUE (and is active if @active_only is %TRUE)).
+ *
+ * Tech category: %BD_DM_TECH_MAP-%BD_DM_TECH_MODE_QUERY
  */
 gboolean  bd_dm_map_exists (const gchar *map_name, gboolean live_only, gboolean active_only, GError **error) {
     return _bd_dm_map_exists (map_name, live_only, active_only, error);
@@ -159,6 +217,8 @@ gchar** (*_bd_dm_get_member_raid_sets) (const gchar *name, const gchar *uuid, gi
  * the member or %NULL in case of error
  *
  * One of @name, @uuid or @major:@minor has to be given.
+ *
+ * Tech category: %BD_DM_TECH_RAID-%BD_DM_TECH_MODE_QUERY
  */
 gchar** bd_dm_get_member_raid_sets (const gchar *name, const gchar *uuid, gint major, gint minor, GError **error) {
     return _bd_dm_get_member_raid_sets (name, uuid, major, minor, error);
@@ -180,6 +240,8 @@ gboolean  (*_bd_dm_activate_raid_set) (const gchar *name, GError **error) = bd_d
  * @error: (out): variable to store error (if any)
  *
  * Returns: whether the RAID set @name was successfully activate or not
+ *
+ * Tech category: %BD_DM_TECH_RAID-%BD_DM_TECH_CREATE_ACTIVATE
  */
 gboolean  bd_dm_activate_raid_set (const gchar *name, GError **error) {
     return _bd_dm_activate_raid_set (name, error);
@@ -201,6 +263,8 @@ gboolean  (*_bd_dm_deactivate_raid_set) (const gchar *name, GError **error) = bd
  * @error: (out): variable to store error (if any)
  *
  * Returns: whether the RAID set @name was successfully deactivate or not
+ *
+ * Tech category: %BD_DM_TECH_RAID-%BD_DM_TECH_REMOVE_DEACTIVATE
  */
 gboolean  bd_dm_deactivate_raid_set (const gchar *name, GError **error) {
     return _bd_dm_deactivate_raid_set (name, error);
@@ -222,6 +286,8 @@ gchar* (*_bd_dm_get_raid_set_type) (const gchar *name, GError **error) = bd_dm_g
  * @error: (out): variable to store error (if any)
  *
  * Returns: string representation of the @name RAID set's type
+ *
+ * Tech category: %BD_DM_TECH_RAID-%BD_DM_TECH_QUERY
  */
 gchar* bd_dm_get_raid_set_type (const gchar *name, GError **error) {
     return _bd_dm_get_raid_set_type (name, error);
@@ -259,6 +325,11 @@ gpointer load_dm_from_plugin(const gchar *so_name) {
     }    init_fn = NULL;
 
     dlerror();
+    * (void**) (&_bd_dm_is_tech_avail) = dlsym(handle, "bd_dm_is_tech_avail");
+    if ((error = dlerror()) != NULL)
+        g_warning("failed to load bd_dm_is_tech_avail: %s", error);
+
+    dlerror();
     * (void**) (&_bd_dm_create_linear) = dlsym(handle, "bd_dm_create_linear");
     if ((error = dlerror()) != NULL)
         g_warning("failed to load bd_dm_create_linear: %s", error);
@@ -277,6 +348,11 @@ gpointer load_dm_from_plugin(const gchar *so_name) {
     * (void**) (&_bd_dm_node_from_name) = dlsym(handle, "bd_dm_node_from_name");
     if ((error = dlerror()) != NULL)
         g_warning("failed to load bd_dm_node_from_name: %s", error);
+
+    dlerror();
+    * (void**) (&_bd_dm_get_subsystem_from_name) = dlsym(handle, "bd_dm_get_subsystem_from_name");
+    if ((error = dlerror()) != NULL)
+        g_warning("failed to load bd_dm_get_subsystem_from_name: %s", error);
 
     dlerror();
     * (void**) (&_bd_dm_map_exists) = dlsym(handle, "bd_dm_map_exists");
@@ -310,10 +386,12 @@ gboolean unload_dm (gpointer handle) {
     char *error = NULL;
     gboolean (*close_fn) (void) = NULL;
 
+    _bd_dm_is_tech_avail = bd_dm_is_tech_avail_stub;
     _bd_dm_create_linear = bd_dm_create_linear_stub;
     _bd_dm_remove = bd_dm_remove_stub;
     _bd_dm_name_from_node = bd_dm_name_from_node_stub;
     _bd_dm_node_from_name = bd_dm_node_from_name_stub;
+    _bd_dm_get_subsystem_from_name = bd_dm_get_subsystem_from_name_stub;
     _bd_dm_map_exists = bd_dm_map_exists_stub;
     _bd_dm_get_member_raid_sets = bd_dm_get_member_raid_sets_stub;
     _bd_dm_activate_raid_set = bd_dm_activate_raid_set_stub;

@@ -136,7 +136,8 @@ GType  bd_btrfs_filesystem_info_get_type () {
     return type;
 }
 
-static const gchar const * const btrfs_functions[] = {
+static const gchar* const btrfs_functions[] = {
+    "bd_btrfs_is_tech_avail",
     "bd_btrfs_create_volume",
     "bd_btrfs_add_device",
     "bd_btrfs_remove_device",
@@ -155,15 +156,38 @@ static const gchar const * const btrfs_functions[] = {
     "bd_btrfs_change_label",
     NULL};
 
-gchar const * const * get_btrfs_functions (void) {
+const gchar* const* get_btrfs_functions (void) {
     return btrfs_functions;
 }
 
-static const guint8 btrfs_num_functions = 16;
+static const guint8 btrfs_num_functions = 17;
 
 guint8 get_btrfs_num_functions (void) {
     return btrfs_num_functions;
 }
+
+gboolean  bd_btrfs_is_tech_avail_stub (BDBtrfsTech tech, guint64 mode, GError **error) {
+    g_critical ("The function 'bd_btrfs_is_tech_avail' called, but not implemented!");
+    g_set_error (error, BD_INIT_ERROR, BD_INIT_ERROR_NOT_IMPLEMENTED,
+                "The function 'bd_btrfs_is_tech_avail' called, but not implemented!");
+    return FALSE;
+}
+
+gboolean  (*_bd_btrfs_is_tech_avail) (BDBtrfsTech tech, guint64 mode, GError **error) = bd_btrfs_is_tech_avail_stub;
+
+/**
+ * bd_btrfs_is_tech_avail:
+ * @tech: the queried tech
+ * @mode: a bit mask of queried modes of operation (#BDBtrfsTechMode) for @tech
+ * @error: (out): place to store error (details about why the @tech-@mode combination is not available)
+ *
+ * Returns: whether the @tech-@mode combination is avaible -- supported by the
+ *          plugin implementation and having all the runtime dependencies available
+ */
+gboolean  bd_btrfs_is_tech_avail (BDBtrfsTech tech, guint64 mode, GError **error) {
+    return _bd_btrfs_is_tech_avail (tech, mode, error);
+}
+
 
 gboolean  bd_btrfs_create_volume_stub (const gchar **devices, const gchar *label, const gchar *data_level, const gchar *md_level, const BDExtraArg **extra, GError **error) {
     g_critical ("The function 'bd_btrfs_create_volume' called, but not implemented!");
@@ -187,6 +211,8 @@ gboolean  (*_bd_btrfs_create_volume) (const gchar **devices, const gchar *label,
  * Returns: whether the new btrfs volume was created from @devices or not
  *
  * See mkfs.btrfs(8) for details about @data_level, @md_level and btrfs in general.
+ *
+ * Tech category: %BD_BTRFS_TECH_MULTI_DEV-%BD_BTRFS_TECH_MODE_CREATE
  */
 gboolean  bd_btrfs_create_volume (const gchar **devices, const gchar *label, const gchar *data_level, const gchar *md_level, const BDExtraArg **extra, GError **error) {
     return _bd_btrfs_create_volume (devices, label, data_level, md_level, extra, error);
@@ -211,6 +237,8 @@ gboolean  (*_bd_btrfs_add_device) (const gchar *mountpoint, const gchar *device,
  * @error: (out): place to store error (if any)
  *
  * Returns: whether the @device was successfully added to the @mountpoint btrfs volume or not
+ *
+ * Tech category: %BD_BTRFS_TECH_MULTI_DEV-%BD_BTRFS_TECH_MODE_MODIFY
  */
 gboolean  bd_btrfs_add_device (const gchar *mountpoint, const gchar *device, const BDExtraArg **extra, GError **error) {
     return _bd_btrfs_add_device (mountpoint, device, extra, error);
@@ -235,6 +263,8 @@ gboolean  (*_bd_btrfs_remove_device) (const gchar *mountpoint, const gchar *devi
  * @error: (out): place to store error (if any)
  *
  * Returns: whether the @device was successfully removed from the @mountpoint btrfs volume or not
+ *
+ * Tech category: %BD_BTRFS_TECH_MULTI_DEV-%BD_BTRFS_TECH_MODE_MODIFY
  */
 gboolean  bd_btrfs_remove_device (const gchar *mountpoint, const gchar *device, const BDExtraArg **extra, GError **error) {
     return _bd_btrfs_remove_device (mountpoint, device, extra, error);
@@ -259,6 +289,8 @@ gboolean  (*_bd_btrfs_create_subvolume) (const gchar *mountpoint, const gchar *n
  * @error: (out): place to store error (if any)
  *
  * Returns: whether the @mountpoint/@name subvolume was successfully created or not
+ *
+ * Tech category: %BD_BTRFS_TECH_SUBVOL-%BD_BTRFS_TECH_MODE_CREATE
  */
 gboolean  bd_btrfs_create_subvolume (const gchar *mountpoint, const gchar *name, const BDExtraArg **extra, GError **error) {
     return _bd_btrfs_create_subvolume (mountpoint, name, extra, error);
@@ -283,6 +315,8 @@ gboolean  (*_bd_btrfs_delete_subvolume) (const gchar *mountpoint, const gchar *n
  * @error: (out): place to store error (if any)
  *
  * Returns: whether the @mountpoint/@name subvolume was successfully deleted or not
+ *
+ * Tech category: %BD_BTRFS_TECH_SUBVOL-%BD_BTRFS_TECH_MODE_DELETE
  */
 gboolean  bd_btrfs_delete_subvolume (const gchar *mountpoint, const gchar *name, const BDExtraArg **extra, GError **error) {
     return _bd_btrfs_delete_subvolume (mountpoint, name, extra, error);
@@ -305,6 +339,8 @@ guint64  (*_bd_btrfs_get_default_subvolume_id) (const gchar *mountpoint, GError 
  *
  * Returns: ID of the @mountpoint volume's default subvolume. If 0,
  * @error) may be set to indicate error
+ *
+ * Tech category: %BD_BTRFS_TECH_SUBVOL-%BD_BTRFS_TECH_MODE_QUERY
  */
 guint64  bd_btrfs_get_default_subvolume_id (const gchar *mountpoint, GError **error) {
     return _bd_btrfs_get_default_subvolume_id (mountpoint, error);
@@ -330,6 +366,8 @@ gboolean  (*_bd_btrfs_set_default_subvolume) (const gchar *mountpoint, guint64 s
  *
  * Returns: whether the @mountpoint volume's default subvolume was correctly set
  * to @subvol_id or not
+ *
+ * Tech category: %BD_BTRFS_TECH_SUBVOL-%BD_BTRFS_TECH_MODE_MODIFY
  */
 gboolean  bd_btrfs_set_default_subvolume (const gchar *mountpoint, guint64 subvol_id, const BDExtraArg **extra, GError **error) {
     return _bd_btrfs_set_default_subvolume (mountpoint, subvol_id, extra, error);
@@ -355,6 +393,8 @@ gboolean  (*_bd_btrfs_create_snapshot) (const gchar *source, const gchar *dest, 
  * @error: (out): place to store error (if any)
  *
  * Returns: whether the @dest snapshot of @source was successfully created or not
+ *
+ * Tech category: %BD_BTRFS_TECH_SNAPSHOT-%BD_BTRFS_TECH_MODE_CREATE
  */
 gboolean  bd_btrfs_create_snapshot (const gchar *source, const gchar *dest, gboolean ro, const BDExtraArg **extra, GError **error) {
     return _bd_btrfs_create_snapshot (source, dest, ro, extra, error);
@@ -377,6 +417,8 @@ BDBtrfsDeviceInfo** (*_bd_btrfs_list_devices) (const gchar *device, GError **err
  *
  * Returns: (array zero-terminated=1): information about the devices that are part of the btrfs volume
  * containing @device or %NULL in case of error
+ *
+ * Tech category: %BD_BTRFS_TECH_MULTI_DEV-%BD_BTRFS_TECH_MODE_QUERY
  */
 BDBtrfsDeviceInfo** bd_btrfs_list_devices (const gchar *device, GError **error) {
     return _bd_btrfs_list_devices (device, error);
@@ -403,6 +445,8 @@ BDBtrfsSubvolumeInfo** (*_bd_btrfs_list_subvolumes) (const gchar *mountpoint, gb
  *
  * The subvolumes are sorted in a way that no child subvolume appears in the
  * list before its parent (sub)volume.
+ *
+ * Tech category: %BD_BTRFS_TECH_SUBVOL-%BD_BTRFS_TECH_MODE_QUERY
  */
 BDBtrfsSubvolumeInfo** bd_btrfs_list_subvolumes (const gchar *mountpoint, gboolean snapshots_only, GError **error) {
     return _bd_btrfs_list_subvolumes (mountpoint, snapshots_only, error);
@@ -424,6 +468,8 @@ BDBtrfsFilesystemInfo* (*_bd_btrfs_filesystem_info) (const gchar *device, GError
  * @error: (out): place to store error (if any)
  *
  * Returns: information about the @device's volume's filesystem or %NULL in case of error
+ *
+ * Tech category: %BD_BTRFS_TECH_FS-%BD_BTRFS_TECH_MODE_QUERY
  */
 BDBtrfsFilesystemInfo* bd_btrfs_filesystem_info (const gchar *device, GError **error) {
     return _bd_btrfs_filesystem_info (device, error);
@@ -452,6 +498,8 @@ gboolean  (*_bd_btrfs_mkfs) (const gchar **devices, const gchar *label, const gc
  * Returns: whether the new btrfs volume was created from @devices or not
  *
  * See mkfs.btrfs(8) for details about @data_level, @md_level and btrfs in general.
+ *
+ * Tech category: %BD_BTRFS_TECH_FS-%BD_BTRFS_TECH_MODE_CREATE
  */
 gboolean  bd_btrfs_mkfs (const gchar **devices, const gchar *label, const gchar *data_level, const gchar *md_level, const BDExtraArg **extra, GError **error) {
     return _bd_btrfs_mkfs (devices, label, data_level, md_level, extra, error);
@@ -477,6 +525,8 @@ gboolean  (*_bd_btrfs_resize) (const gchar *mountpoint, guint64 size, const BDEx
  *
  * Returns: whether the @mountpoint filesystem was successfully resized to @size
  * or not
+ *
+ * Tech category: %BD_BTRFS_TECH_FS-%BD_BTRFS_TECH_MODE_MODIFY
  */
 gboolean  bd_btrfs_resize (const gchar *mountpoint, guint64 size, const BDExtraArg **extra, GError **error) {
     return _bd_btrfs_resize (mountpoint, size, extra, error);
@@ -500,6 +550,8 @@ gboolean  (*_bd_btrfs_check) (const gchar *device, const BDExtraArg **extra, GEr
  * @error: (out): place to store error (if any)
  *
  * Returns: whether the filesystem was successfully checked or not
+ *
+ * Tech category: %BD_BTRFS_TECH_FS-%BD_BTRFS_TECH_MODE_QUERY
  */
 gboolean  bd_btrfs_check (const gchar *device, const BDExtraArg **extra, GError **error) {
     return _bd_btrfs_check (device, extra, error);
@@ -523,6 +575,8 @@ gboolean  (*_bd_btrfs_repair) (const gchar *device, const BDExtraArg **extra, GE
  * @error: (out): place to store error (if any)
  *
  * Returns: whether the filesystem was successfully checked and repaired or not
+ *
+ * Tech category: %BD_BTRFS_TECH_FS-%BD_BTRFS_TECH_MODE_MODIFY
  */
 gboolean  bd_btrfs_repair (const gchar *device, const BDExtraArg **extra, GError **error) {
     return _bd_btrfs_repair (device, extra, error);
@@ -548,6 +602,8 @@ gboolean  (*_bd_btrfs_change_label) (const gchar *mountpoint, const gchar *label
  *
  * Returns: whether the label of the @mountpoint filesystem was successfully set
  * to @label or not
+ *
+ * Tech category: %BD_BTRFS_TECH_FS-%BD_BTRFS_TECH_MODE_MODIFY
  */
 gboolean  bd_btrfs_change_label (const gchar *mountpoint, const gchar *label, const BDExtraArg **extra, GError **error) {
     return _bd_btrfs_change_label (mountpoint, label, extra, error);
@@ -583,6 +639,11 @@ gpointer load_btrfs_from_plugin(const gchar *so_name) {
         dlclose(handle);
         return NULL;
     }    init_fn = NULL;
+
+    dlerror();
+    * (void**) (&_bd_btrfs_is_tech_avail) = dlsym(handle, "bd_btrfs_is_tech_avail");
+    if ((error = dlerror()) != NULL)
+        g_warning("failed to load bd_btrfs_is_tech_avail: %s", error);
 
     dlerror();
     * (void**) (&_bd_btrfs_create_volume) = dlsym(handle, "bd_btrfs_create_volume");
@@ -671,6 +732,7 @@ gboolean unload_btrfs (gpointer handle) {
     char *error = NULL;
     gboolean (*close_fn) (void) = NULL;
 
+    _bd_btrfs_is_tech_avail = bd_btrfs_is_tech_avail_stub;
     _bd_btrfs_create_volume = bd_btrfs_create_volume_stub;
     _bd_btrfs_add_device = bd_btrfs_add_device_stub;
     _bd_btrfs_remove_device = bd_btrfs_remove_device_stub;

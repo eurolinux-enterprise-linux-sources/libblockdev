@@ -5,7 +5,7 @@ import subprocess
 import tempfile
 from contextlib import contextmanager
 import utils
-from utils import run, create_sparse_tempfile, mount, umount
+from utils import run, create_sparse_tempfile, mount, umount, unstable_test
 import six
 import overrides_hack
 
@@ -24,8 +24,8 @@ def check_output(args, ignore_retcode=True):
             raise
 
 @contextmanager
-def mounted(device, where):
-    mount(device, where)
+def mounted(device, where, ro=False):
+    mount(device, where, ro)
     yield
     umount(where)
 
@@ -35,10 +35,21 @@ class FSTestCase(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
+        BlockDev.switch_init_checks(False)
         if not BlockDev.is_initialized():
             BlockDev.init(cls.requested_plugins, None)
         else:
             BlockDev.reinit(cls.requested_plugins, True, None)
+        BlockDev.switch_init_checks(True)
+        try:
+            cls.ntfs_avail = BlockDev.fs_is_tech_avail(BlockDev.FSTech.NTFS,
+                                                       BlockDev.FSTechMode.MKFS |
+                                                       BlockDev.FSTechMode.RESIZE |
+                                                       BlockDev.FSTechMode.REPAIR |
+                                                       BlockDev.FSTechMode.CHECK |
+                                                       BlockDev.FSTechMode.SET_LABEL)
+        except:
+            cls.ntfs_avail = False
 
     def setUp(self):
         self.addCleanup(self._clean_up)
@@ -74,6 +85,16 @@ class FSTestCase(unittest.TestCase):
             umount(self.mount_dir)
         except:
             pass
+
+    def setro(self, device):
+        ret, _out, _err = utils.run_command("blockdev --setro %s" % device)
+        if ret != 0:
+            self.fail("Failed to set %s read-only" % device)
+
+    def setrw(self, device):
+        ret, _out, _err = utils.run_command("blockdev --setrw %s" % device)
+        if ret != 0:
+            self.fail("Failed to set %s read-write" % device)
 
 class TestGenericWipe(FSTestCase):
     def test_generic_wipe(self):
@@ -549,9 +570,9 @@ class XfsTestCheck(FSTestCase):
         succ = BlockDev.fs_xfs_check(self.loop_dev)
         self.assertTrue(succ)
 
-        # mounted, but can be checked and nothing happened in/to the file
-        # system, so it should be just reported as clean
-        with mounted(self.loop_dev, self.mount_dir):
+        # mounted RO, can be checked and nothing happened in/to the file system,
+        # so it should be just reported as clean
+        with mounted(self.loop_dev, self.mount_dir, ro=True):
             succ = BlockDev.fs_xfs_check(self.loop_dev)
             self.assertTrue(succ)
 
@@ -1114,7 +1135,70 @@ class MountTest(FSTestCase):
             BlockDev.fs_unmount(self.loop_dev, run_as_uid=uid, run_as_gid=gid)
         self.assertTrue(os.path.ismount(tmp))
 
+    def test_mount_ntfs(self):
+        """ Test basic mounting and unmounting with NTFS filesystem"""
+        # using NTFS because it uses a helper program (mount.ntfs) and libmount
+        # behaves differently because of that
+
+        if not self.ntfs_avail:
+            self.skipTest("skipping NTFS: not available")
+
+        succ = BlockDev.fs_ntfs_mkfs(self.loop_dev, None)
+        self.assertTrue(succ)
+
+        tmp = tempfile.mkdtemp(prefix="libblockdev.", suffix="mount_test")
+        self.addCleanup(os.rmdir, tmp)
+
+        self.addCleanup(umount, self.loop_dev)
+
+        succ = BlockDev.fs_mount(self.loop_dev, tmp, "ntfs", None)
+        self.assertTrue(succ)
+        self.assertTrue(os.path.ismount(tmp))
+
+        succ = BlockDev.fs_unmount(self.loop_dev, False, False, None)
+        self.assertTrue(succ)
+        self.assertFalse(os.path.ismount(tmp))
+
+        mnt = BlockDev.fs_get_mountpoint(self.loop_dev)
+        self.assertIsNone(mnt)
+
+        # mount again to test unmount using the mountpoint
+        succ = BlockDev.fs_mount(self.loop_dev, tmp, None, None)
+        self.assertTrue(succ)
+        self.assertTrue(os.path.ismount(tmp))
+
+        succ = BlockDev.fs_unmount(tmp, False, False, None)
+        self.assertTrue(succ)
+        self.assertFalse(os.path.ismount(tmp))
+
+        # mount with some options
+        succ = BlockDev.fs_mount(self.loop_dev, tmp, "ntfs", "ro")
+        self.assertTrue(succ)
+        self.assertTrue(os.path.ismount(tmp))
+        _ret, out, _err = utils.run_command("grep %s /proc/mounts" % tmp)
+        self.assertTrue(out)
+        self.assertIn("ro", out)
+
+        succ = BlockDev.fs_unmount(self.loop_dev, False, False, None)
+        self.assertTrue(succ)
+        self.assertFalse(os.path.ismount(tmp))
+
+        # set the device read-only
+        self.setro(self.loop_dev)
+        self.addCleanup(self.setrw, self.loop_dev)
+
+        # standard mount (rw) should fail
+        with self.assertRaises(GLib.GError):
+            BlockDev.fs_mount(self.loop_dev, tmp, "ntfs", None)
+
+        # read-only mount should work
+        succ = BlockDev.fs_mount(self.loop_dev, tmp, "ntfs", "ro")
+        self.assertTrue(succ)
+        self.assertTrue(os.path.ismount(tmp))
+
 class GenericCheck(FSTestCase):
+    log = []
+
     def _test_generic_check(self, mkfs_function):
         # clean the device
         succ = BlockDev.fs_clean(self.loop_dev)
@@ -1122,17 +1206,45 @@ class GenericCheck(FSTestCase):
         succ = mkfs_function(self.loop_dev, None)
         self.assertTrue(succ)
 
+        self.log = []
         # check for consistency (expected to be ok)
         succ = BlockDev.fs_check(self.loop_dev)
         self.assertTrue(succ)
+
+    def _my_progress_func(self, task, status, completion, msg):
+        self.assertTrue(isinstance(completion, int))
+        self.log.append(completion)
+
+    def _verify_progress(self, log):
+        # at least 2 members
+        self.assertLessEqual(2, len(log))
+        # non-decreasing members
+        self.assertTrue(all(x<=y for x, y in zip(log, log[1:])))
 
     def test_ext4_generic_check(self):
         """Test generic check function with an ext4 file system"""
         self._test_generic_check(mkfs_function=BlockDev.fs_ext4_mkfs)
 
+    def test_ext4_progress_check(self):
+        """Test check function with an ext4 file system and progress reporting"""
+
+        succ = BlockDev.utils_init_prog_reporting(self._my_progress_func)
+        self.assertTrue(succ)
+
+        self._test_generic_check(mkfs_function=BlockDev.fs_ext4_mkfs)
+        self._verify_progress(self.log)
+
+        succ = BlockDev.utils_init_prog_reporting(None)
+
     def test_xfs_generic_check(self):
         """Test generic check function with an ext4 file system"""
         self._test_generic_check(mkfs_function=BlockDev.fs_xfs_mkfs)
+
+    def test_ntfs_generic_check(self):
+        """Test generic check function with an ntfs file system"""
+        if not self.ntfs_avail:
+            self.skipTest("skipping NTFS: not available")
+        self._test_generic_check(mkfs_function=BlockDev.fs_ntfs_mkfs)
 
 class GenericRepair(FSTestCase):
     def _test_generic_repair(self, mkfs_function):
@@ -1154,6 +1266,12 @@ class GenericRepair(FSTestCase):
         """Test generic repair function with an xfs file system"""
         self._test_generic_repair(mkfs_function=BlockDev.fs_xfs_mkfs)
 
+    def test_ntfs_generic_repair(self):
+        """Test generic repair function with an ntfs file system"""
+        if not self.ntfs_avail:
+            self.skipTest("skipping NTFS: not available")
+        self._test_generic_repair(mkfs_function=BlockDev.fs_ntfs_mkfs)
+
 class GenericSetLabel(FSTestCase):
     def _test_generic_set_label(self, mkfs_function):
         # clean the device
@@ -1173,6 +1291,12 @@ class GenericSetLabel(FSTestCase):
     def test_xfs_generic_set_label(self):
         """Test generic set_label function with a xfs file system"""
         self._test_generic_set_label(mkfs_function=BlockDev.fs_xfs_mkfs)
+
+    def test_ntfs_generic_set_label(self):
+        """Test generic set_label function with a ntfs file system"""
+        if not self.ntfs_avail:
+            self.skipTest("skipping NTFS: not available")
+        self._test_generic_set_label(mkfs_function=BlockDev.fs_ntfs_mkfs)
 
 class GenericResize(FSTestCase):
     def _test_generic_resize(self, mkfs_function, fs_info_func=None, info_size_func=None):
@@ -1219,6 +1343,24 @@ class GenericResize(FSTestCase):
                                   fs_info_func=BlockDev.fs_ext4_get_info,
                                   info_size_func=lambda fi: fi.block_size * fi.block_count)
 
+    def test_ntfs_generic_resize(self):
+        """Test generic resize function with an ntfs file system"""
+        if not self.ntfs_avail:
+            self.skipTest("skipping NTFS: not available")
+        def mkfs_prepare(drive, l):
+            return BlockDev.fs_ntfs_mkfs(drive, l) and BlockDev.fs_repair(drive)
+        def info_prepare(drive):
+            return BlockDev.fs_repair(drive) and BlockDev.fs_ntfs_get_info(drive)
+        def expected_size(fi):
+            # man ntfsresize says "The filesystem size is set to be at least one
+            # sector smaller" (maybe depending on alignment as well?), thus on a
+            # loop device as in this test it is 4096 bytes smaller than requested
+            return fi.size + 4096
+        self._test_generic_resize(mkfs_function=mkfs_prepare,
+                                  fs_info_func=info_prepare,
+                                  info_size_func=expected_size)
+
+    @unstable_test
     def test_vfat_generic_resize(self):
         """Test generic resize function with a vfat file system"""
         self._test_generic_resize(mkfs_function=BlockDev.fs_vfat_mkfs)

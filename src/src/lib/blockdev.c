@@ -13,10 +13,10 @@
 #include "plugin_apis/loop.c"
 #include "plugin_apis/crypto.h"
 #include "plugin_apis/crypto.c"
-#include "plugin_apis/mpath.c"
 #include "plugin_apis/mpath.h"
-#include "plugin_apis/dm.c"
+#include "plugin_apis/mpath.c"
 #include "plugin_apis/dm.h"
+#include "plugin_apis/dm.c"
 #include "plugin_apis/mdraid.h"
 #include "plugin_apis/mdraid.c"
 #include "plugin_apis/kbd.h"
@@ -25,6 +25,10 @@
 #include "plugin_apis/part.c"
 #include "plugin_apis/fs.h"
 #include "plugin_apis/fs.c"
+#include "plugin_apis/nvdimm.h"
+#include "plugin_apis/nvdimm.c"
+#include "plugin_apis/vdo.h"
+#include "plugin_apis/vdo.c"
 
 #if defined(__s390__) || defined(__s390x__)
 #include "plugin_apis/s390.h"
@@ -43,6 +47,7 @@
 
 static GMutex init_lock;
 static gboolean initialized = FALSE;
+static GMutex env_lock;
 
 typedef struct BDPluginStatus {
     BDPluginSpec spec;
@@ -58,7 +63,8 @@ static gchar * default_plugin_so[BD_PLUGIN_UNDEF] = {
     "libbd_crypto.so.""2", "libbd_mpath.so.""2",
     "libbd_dm.so.""2", "libbd_mdraid.so.""2",
     "libbd_kbd.so.""2","libbd_s390.so.""2",
-    "libbd_part.so.""2", "libbd_fs.so.""2"
+    "libbd_part.so.""2", "libbd_fs.so.""2",
+    "libbd_nvdimm.so.""2", "libbd_vdo.so.""2"
 };
 static BDPluginStatus plugins[BD_PLUGIN_UNDEF] = {
     {{BD_PLUGIN_LVM, NULL}, NULL},
@@ -73,9 +79,11 @@ static BDPluginStatus plugins[BD_PLUGIN_UNDEF] = {
     {{BD_PLUGIN_S390, NULL}, NULL},
     {{BD_PLUGIN_PART, NULL}, NULL},
     {{BD_PLUGIN_FS, NULL}, NULL},
+    {{BD_PLUGIN_NVDIMM, NULL}, NULL},
+    {{BD_PLUGIN_VDO, NULL}, NULL},
 };
 static gchar* plugin_names[BD_PLUGIN_UNDEF] = {
-    "lvm", "btrfs", "swap", "loop", "crypto", "mpath", "dm", "mdraid", "kbd", "s390", "part", "fs"
+    "lvm", "btrfs", "swap", "loop", "crypto", "mpath", "dm", "mdraid", "kbd", "s390", "part", "fs", "nvdimm", "vdo"
 };
 
 static void set_plugin_so_name (BDPlugin name, const gchar *so_name) {
@@ -86,7 +94,7 @@ static gint config_file_cmp (gconstpointer a, gconstpointer b, gpointer user_dat
     const gchar *name1 = (const gchar *) a;
     const gchar *name2 = (const gchar *) b;
 
-    return g_strcmp0 (a, b);
+    return g_strcmp0 (name1, name2);
 }
 
 static GSequence* get_config_files (GError **error) {
@@ -160,7 +168,6 @@ static gboolean process_config_file (const gchar *config_file, GSList **plugins_
 static gboolean load_config (GSequence *config_files, GSList **plugins_sonames, GError **error) {
     GSequenceIter *config_file_iter = NULL;
     gchar *config_file = NULL;
-    BDPlugin i = 0;
 
     /* process config files one after another in order */
     config_file_iter = g_sequence_get_begin_iter (config_files);
@@ -226,6 +233,14 @@ static void unload_plugins () {
     if (plugins[BD_PLUGIN_FS].handle && !unload_fs (plugins[BD_PLUGIN_FS].handle))
         g_warning ("Failed to close the fs plugin");
     plugins[BD_PLUGIN_FS].handle = NULL;
+
+    if (plugins[BD_PLUGIN_NVDIMM].handle && !unload_nvdimm (plugins[BD_PLUGIN_NVDIMM].handle))
+        g_warning ("Failed to close the nvdimm plugin");
+    plugins[BD_PLUGIN_NVDIMM].handle = NULL;
+
+    if (plugins[BD_PLUGIN_VDO].handle && !unload_vdo (plugins[BD_PLUGIN_VDO].handle))
+        g_warning ("Failed to close the VDO plugin");
+    plugins[BD_PLUGIN_VDO].handle = NULL;
 }
 
 static void load_plugin_from_sonames (BDPlugin plugin, LoadFunc load_fn, void **handle, GSList *sonames) {
@@ -264,6 +279,10 @@ static void do_load (GSList **plugins_sonames) {
         load_plugin_from_sonames (BD_PLUGIN_PART, load_part_from_plugin, &(plugins[BD_PLUGIN_PART].handle), plugins_sonames[BD_PLUGIN_PART]);
     if (!plugins[BD_PLUGIN_FS].handle && plugins_sonames[BD_PLUGIN_FS])
         load_plugin_from_sonames (BD_PLUGIN_FS, load_fs_from_plugin, &(plugins[BD_PLUGIN_FS].handle), plugins_sonames[BD_PLUGIN_FS]);
+    if (!plugins[BD_PLUGIN_NVDIMM].handle && plugins_sonames[BD_PLUGIN_NVDIMM])
+        load_plugin_from_sonames (BD_PLUGIN_NVDIMM, load_nvdimm_from_plugin, &(plugins[BD_PLUGIN_NVDIMM].handle), plugins_sonames[BD_PLUGIN_NVDIMM]);
+    if (!plugins[BD_PLUGIN_VDO].handle && plugins_sonames[BD_PLUGIN_VDO])
+        load_plugin_from_sonames (BD_PLUGIN_VDO, load_vdo_from_plugin, &(plugins[BD_PLUGIN_VDO].handle), plugins_sonames[BD_PLUGIN_VDO]);
 }
 
 static gboolean load_plugins (BDPluginSpec **require_plugins, gboolean reload, guint64 *num_loaded) {
@@ -734,4 +753,42 @@ gchar* bd_get_plugin_soname (BDPlugin plugin) {
         return g_strdup (plugins[plugin].spec.so_name);
 
     return NULL;
+}
+
+/**
+ * bd_get_plugin_name:
+ * @plugin: the queried plugin
+ *
+ * Returns: (transfer none): name of the plugin
+ */
+gchar* bd_get_plugin_name (BDPlugin plugin) {
+    return plugin_names[plugin];
+}
+
+/**
+ * bd_switch_init_checks:
+ * @enable: whether to enable init checks (%TRUE) or not (%FALSE)
+ * @error: (out): place to store error (if any)
+ *
+ * Enables or disables plugins' init checks based on @enable.
+ *
+ * Note: The current implementation (un)sets the LIBBLOCKDEV_SKIP_DEP_CHECKS
+ *       environment variable.
+ */
+gboolean bd_switch_init_checks (gboolean enable, GError **error) {
+    /* getenv/setenv/unsetenv are not thread-safe, better use a lock here */
+    g_autoptr(GMutexLocker) locker = g_mutex_locker_new (&env_lock);
+
+    if (!enable && !g_getenv ("LIBBLOCKDEV_SKIP_DEP_CHECKS")) {
+        if (!g_setenv ("LIBBLOCKDEV_SKIP_DEP_CHECKS", "", FALSE)) {
+            g_set_error (error, BD_INIT_ERROR, BD_INIT_ERROR_FAILED,
+                         "Failed to set the LIBBLOCKDEV_SKIP_DEP_CHECKS environment variable");
+            return FALSE;
+        }
+        return TRUE;
+    } else if (enable && g_getenv ("LIBBLOCKDEV_SKIP_DEP_CHECKS")) {
+        g_unsetenv ("LIBBLOCKDEV_SKIP_DEP_CHECKS");
+        return TRUE;
+    } else
+        return TRUE;
 }

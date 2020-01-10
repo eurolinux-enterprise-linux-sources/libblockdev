@@ -9,7 +9,31 @@ GQuark  bd_loop_error_quark (void);
 typedef enum {
     BD_LOOP_ERROR_DEVICE,
     BD_LOOP_ERROR_FAIL,
+    BD_LOOP_ERROR_TECH_UNAVAIL,
 } BDLoopError;
+
+typedef enum {
+    BD_LOOP_TECH_LOOP = 0,
+} BDLoopTech;
+
+typedef enum {
+    BD_LOOP_TECH_MODE_CREATE  = 1 << 0,
+    BD_LOOP_TECH_MODE_DESTROY = 1 << 1,
+    BD_LOOP_TECH_MODE_MODIFY  = 1 << 2,
+    BD_LOOP_TECH_MODE_QUERY   = 1 << 3,
+} BDLoopTechMode;
+
+/**
+ * bd_loop_is_tech_avail:
+ * @tech: the queried tech
+ * @mode: a bit mask of queried modes of operation (#BDLoopTechMode) for @tech
+ * @error: (out): place to store error (details about why the @tech-@mode combination is not available)
+ *
+ * Returns: whether the @tech-@mode combination is available -- supported by the
+ *          plugin implementation and having all the runtime dependencies available
+ */
+gboolean  bd_loop_is_tech_avail (BDLoopTech tech, guint64 mode, GError **error);
+
 
 /**
  * bd_loop_get_backing_file:
@@ -18,6 +42,8 @@ typedef enum {
  *
  * Returns: (transfer full): path of the device's backing file or %NULL if none
  *                           is found
+ *
+ * Tech category: %BD_LOOP_TECH_LOOP-%BD_LOOP_TECH_MODE_QUERY
  */
 gchar* bd_loop_get_backing_file (const gchar *dev_name, GError **error);
 
@@ -28,6 +54,8 @@ gchar* bd_loop_get_backing_file (const gchar *dev_name, GError **error);
  * @error: (out): place to store error (if any)
  *
  * Returns: (transfer full): name of the loop device associated with the given @file
+ *
+ * Tech category: %BD_LOOP_TECH_LOOP-%BD_LOOP_TECH_MODE_QUERY
  */
 gchar* bd_loop_get_loop_name (const gchar *file, GError **error);
 
@@ -43,6 +71,8 @@ gchar* bd_loop_get_loop_name (const gchar *file, GError **error);
  * @error: (out): place to store error (if any)
  *
  * Returns: whether the @file was successfully setup as a loop device or not
+ *
+ * Tech category: %BD_LOOP_TECH_LOOP-%BD_LOOP_TECH_MODE_CREATE
  */
 gboolean  bd_loop_setup (const gchar *file, guint64 offset, guint64 size, gboolean read_only, gboolean part_scan, const gchar **loop_name, GError **error);
 
@@ -58,6 +88,8 @@ gboolean  bd_loop_setup (const gchar *file, guint64 offset, guint64 size, gboole
  * @error: (out): place to store error (if any)
  *
  * Returns: whether an new loop device was successfully setup for @fd or not
+ *
+ * Tech category: %BD_LOOP_TECH_LOOP-%BD_LOOP_TECH_MODE_CREATE
  */
 gboolean  bd_loop_setup_from_fd (gint fd, guint64 offset, guint64 size, gboolean read_only, gboolean part_scan, const gchar **loop_name, GError **error);
 
@@ -68,6 +100,8 @@ gboolean  bd_loop_setup_from_fd (gint fd, guint64 offset, guint64 size, gboolean
  * @error: (out): place to store error (if any)
  *
  * Returns: whether the @loop device was successfully torn down or not
+ *
+ * Tech category: %BD_LOOP_TECH_LOOP-%BD_LOOP_TECH_MODE_DESTROY
  */
 gboolean  bd_loop_teardown (const gchar *loop, GError **error);
 
@@ -78,6 +112,8 @@ gboolean  bd_loop_teardown (const gchar *loop, GError **error);
  * @error: (out): place to store error (if any)
  *
  * Returns: whether the autoclear flag is set on the @loop device or not (if %FALSE, @error may be set)
+ *
+ * Tech category: %BD_LOOP_TECH_LOOP-%BD_LOOP_TECH_MODE_QUERY
  */
 gboolean  bd_loop_get_autoclear (const gchar *loop, GError **error);
 
@@ -89,6 +125,8 @@ gboolean  bd_loop_get_autoclear (const gchar *loop, GError **error);
  * @error: (out): place to store error (if any)
  *
  * Returns: whether the autoclear flag was successfully set on the @loop device or not
+ *
+ * Tech category: %BD_LOOP_TECH_LOOP-%BD_LOOP_TECH_MODE_MODIFY
  */
 gboolean  bd_loop_set_autoclear (const gchar *loop, gboolean autoclear, GError **error);
 

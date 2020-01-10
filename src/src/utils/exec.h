@@ -47,6 +47,7 @@ typedef enum {
     BD_UTILS_EXEC_ERROR_UTIL_UNAVAILABLE,
     BD_UTILS_EXEC_ERROR_UTIL_UNKNOWN_VER,
     BD_UTILS_EXEC_ERROR_UTIL_LOW_VER,
+    BD_UTILS_EXEC_ERROR_UTIL_CHECK_ERROR,
 } BDUtilsExecError;
 
 gboolean bd_utils_exec_and_report_error (const gchar **argv, const BDExtraArg **extra, GError **error);
@@ -59,9 +60,14 @@ gint bd_utils_version_cmp (const gchar *ver_string1, const gchar *ver_string2, G
 gboolean bd_utils_check_util_version (const gchar *util, const gchar *version, const gchar *version_arg, const gchar *version_regexp, GError **error);
 
 gboolean bd_utils_init_prog_reporting (BDUtilsProgFunc new_prog_func, GError **error);
+gboolean bd_utils_init_prog_reporting_thread (BDUtilsProgFunc new_prog_func, GError **error);
+gboolean bd_utils_mute_prog_reporting_thread (GError **error);
+gboolean bd_utils_prog_reporting_initialized ();
 guint64 bd_utils_report_started (gchar *msg);
 void bd_utils_report_progress (guint64 task_id, guint64 completion, gchar *msg);
 void bd_utils_report_finished (guint64 task_id, gchar *msg);
+
+void bd_utils_log (gint level, const gchar *msg);
 
 gboolean bd_utils_echo_str_to_file (const gchar *str, const gchar *file_path, GError **error);
 

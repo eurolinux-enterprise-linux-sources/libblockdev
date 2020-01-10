@@ -1,8 +1,11 @@
 import unittest
 import os
+import re
 import time
 from contextlib import contextmanager
-from utils import create_sparse_tempfile, create_lio_device, delete_lio_device, wipe_all, fake_path, read_file, skip_on
+from distutils.version import LooseVersion
+from utils import create_sparse_tempfile, create_lio_device, delete_lio_device, wipe_all, fake_path, read_file, skip_on, unstable_test
+from bytesize import bytesize
 import overrides_hack
 
 from gi.repository import BlockDev, GLib
@@ -158,10 +161,17 @@ class KbdZRAMDevicesTestCase(KbdZRAMTestCase):
 
 class KbdZRAMStatsTestCase(KbdZRAMTestCase):
     @unittest.skipUnless(_can_load_zram(), "cannot load the 'zram' module")
-    @skip_on(("centos", "enterprise_linux"), reason="needs newest kernel to run")
-    def test_zram_get_stats_fedora(self):
+    def test_zram_get_stats(self):
         """Verify that it is possible to get stats for a zram device"""
 
+        # location of some sysfs files we use is different since linux 4.11
+        kernel_version = os.uname()[2]
+        if LooseVersion(kernel_version) >= LooseVersion("4.11"):
+            self._zram_get_stats_new()
+        else:
+            self._zram_get_stats_old()
+
+    def _zram_get_stats_new(self):
         with _track_module_load(self, "zram", "_loaded_zram_module"):
             self.assertTrue(BlockDev.kbd_zram_create_devices(1, [10 * 1024**2], [2]))
             time.sleep(1)
@@ -210,8 +220,7 @@ class KbdZRAMStatsTestCase(KbdZRAMTestCase):
         with _track_module_load(self, "zram", "_loaded_zram_module"):
             self.assertTrue(BlockDev.kbd_zram_destroy_devices())
 
-    @skip_on(("fedora"), reason="needs old kernel to run")
-    def test_zram_get_stats_centos(self):
+    def _zram_get_stats_old(self):
         with _track_module_load(self, "zram", "_loaded_zram_module"):
             self.assertTrue(BlockDev.kbd_zram_create_devices(1, [10 * 1024**2], [2]))
             time.sleep(1)
@@ -285,6 +294,7 @@ class KbdBcacheTestCase(unittest.TestCase):
         else:
             BlockDev.reinit(cls.requested_plugins, True, None)
 
+    @skip_on(("fedora", "29"), reason="running bcache tests causes system to run out of kernel memory on rawhide")
     def setUp(self):
         self.addCleanup(self._clean_up)
         self.dev_file = create_sparse_tempfile("lvm_test", 10 * 1024**3)
@@ -323,6 +333,7 @@ class KbdBcacheTestCase(unittest.TestCase):
 
 class KbdTestBcacheCreate(KbdBcacheTestCase):
     @skip_on(("centos", "enterprise_linux"))
+    @unstable_test
     def test_bcache_create_destroy(self):
         """Verify that it's possible to create and destroy a bcache device"""
 
@@ -341,6 +352,7 @@ class KbdTestBcacheCreate(KbdBcacheTestCase):
         wipe_all(self.loop_dev, self.loop_dev2)
 
     @skip_on(("centos", "enterprise_linux"))
+    @unstable_test
     def test_bcache_create_destroy_full_path(self):
         """Verify that it's possible to create and destroy a bcache device with full device path"""
 
@@ -360,6 +372,7 @@ class KbdTestBcacheCreate(KbdBcacheTestCase):
 
 class KbdTestBcacheAttachDetach(KbdBcacheTestCase):
     @skip_on(("centos", "enterprise_linux"))
+    @unstable_test
     def test_bcache_attach_detach(self):
         """Verify that it's possible to detach/attach a cache from/to a bcache device"""
 
@@ -385,6 +398,7 @@ class KbdTestBcacheAttachDetach(KbdBcacheTestCase):
         wipe_all(self.loop_dev, self.loop_dev2)
 
     @skip_on(("centos", "enterprise_linux"))
+    @unstable_test
     def test_bcache_attach_detach_full_path(self):
         """Verify that it's possible to detach/attach a cache from/to a bcache device with full device path"""
 
@@ -410,6 +424,7 @@ class KbdTestBcacheAttachDetach(KbdBcacheTestCase):
         wipe_all(self.loop_dev, self.loop_dev2)
 
     @skip_on(("centos", "enterprise_linux"))
+    @unstable_test
     def test_bcache_detach_destroy(self):
         """Verify that it's possible to destroy a bcache device with no cache attached"""
 
@@ -433,6 +448,7 @@ class KbdTestBcacheAttachDetach(KbdBcacheTestCase):
 
 class KbdTestBcacheGetSetMode(KbdBcacheTestCase):
     @skip_on(("centos", "enterprise_linux"))
+    @unstable_test
     def test_bcache_get_set_mode(self):
         """Verify that it is possible to get and set Bcache mode"""
 
@@ -480,7 +496,16 @@ class KbdTestBcacheGetSetMode(KbdBcacheTestCase):
         wipe_all(self.loop_dev, self.loop_dev2)
 
 class KbdTestBcacheStatusTest(KbdBcacheTestCase):
+
+    def _get_size(self, bcache_name):
+        cache_dir = '/sys/block/%s/bcache/cache' % bcache_name
+
+        # sum sizes from all caches
+        caches = ['%s/%s' % (cache_dir, d) for d in os.listdir(cache_dir) if re.match('cache[0-9]*$', d)]
+        return sum(int(read_file(os.path.realpath(c) + '/../size')) for c in caches)
+
     @skip_on(("centos", "enterprise_linux"))
+    @unstable_test
     def test_bcache_status(self):
         succ, dev = BlockDev.kbd_bcache_create(self.loop_dev, self.loop_dev2, None)
         self.assertTrue(succ)
@@ -495,11 +520,14 @@ class KbdTestBcacheStatusTest(KbdBcacheTestCase):
         status = BlockDev.kbd_bcache_status("/dev/" + self.bcache_dev)
         self.assertTrue(status)
 
-        # check some basic values (default block size is 512)
+        # check some basic values
         self.assertTrue(status.state)
-        self.assertEqual(status.state, "clean")
-        self.assertEqual(status.block_size, 512)
-        self.assertGreater(status.cache_size, 0)
+        sys_state = read_file("/sys/block/%s/bcache/state" % self.bcache_dev).strip()
+        self.assertEqual(status.state, sys_state)
+        sys_block = read_file("/sys/block/%s/bcache/cache/block_size" % self.bcache_dev).strip()
+        self.assertEqual(status.block_size, int(bytesize.Size(sys_block)))
+        sys_size = self._get_size(self.bcache_dev)
+        self.assertGreater(status.cache_size, sys_size)
 
         succ = BlockDev.kbd_bcache_destroy(self.bcache_dev)
         self.assertTrue(succ)
@@ -510,6 +538,7 @@ class KbdTestBcacheStatusTest(KbdBcacheTestCase):
 
 class KbdTestBcacheBackingCacheDevTest(KbdBcacheTestCase):
     @skip_on(("centos", "enterprise_linux"))
+    @unstable_test
     def test_bcache_backing_cache_dev(self):
         """Verify that is is possible to get the backing and cache devices for a Bcache"""
 

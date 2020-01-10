@@ -9,6 +9,7 @@ typedef enum {
     BD_PART_ERROR_EXISTS,
     BD_PART_ERROR_INVAL,
     BD_PART_ERROR_FAIL,
+    BD_PART_ERROR_TECH_UNAVAIL,
 } BDPartError;
 
 typedef enum {
@@ -21,6 +22,19 @@ typedef enum {
     BD_PART_DISK_FLAG_GPT_PMBR_BOOT = 1
 } BDPartDiskFlag;
 
+
+/**
+ * BDPartFlag:
+ *
+ * Partition flags supported by libblockdev. First part of the flags (up to
+ * @BD_PART_FLAG_BASIC_LAST) corresponds to the flags supported by libparted
+ * (see https://www.gnu.org/software/parted/manual/parted.html#set). Second
+ * part corresponds to the flags supported by sgdisk (GPT, see `sgdisk -A=list`).
+ *
+ * The only exception from the above is @BD_PART_FLAG_LEGACY_BOOT which is
+ * supported by libparted too but is GPT specific.
+ *
+ */
 typedef enum {
     BD_PART_FLAG_BOOT = 1 << 1,
     BD_PART_FLAG_ROOT = 1 << 2,
@@ -93,6 +107,19 @@ typedef struct BDPartDiskSpec {
 BDPartDiskSpec* bd_part_disk_spec_copy (BDPartDiskSpec *data);
 void bd_part_disk_spec_free (BDPartDiskSpec *data);
 
+typedef enum {
+    BD_PART_TECH_MBR = 0,
+    BD_PART_TECH_GPT,
+} BDPartTech;
+
+typedef enum {
+    BD_PART_TECH_MODE_CREATE_TABLE = 1 << 0,
+    BD_PART_TECH_MODE_MODIFY_TABLE = 1 << 1,
+    BD_PART_TECH_MODE_QUERY_TABLE  = 1 << 2,
+    BD_PART_TECH_MODE_MODIFY_PART  = 1 << 3,
+    BD_PART_TECH_MODE_QUERY_PART   = 1 << 4,
+} BDPartTechMode;
+
 /*
  * If using the plugin as a standalone library, the following functions should
  * be called to:
@@ -105,6 +132,8 @@ void bd_part_disk_spec_free (BDPartDiskSpec *data);
 gboolean bd_part_check_deps ();
 gboolean bd_part_init ();
 void bd_part_close ();
+
+gboolean bd_part_is_tech_avail (BDPartTech tech, guint64 mode, GError **error);
 
 gboolean bd_part_create_table (const gchar *disk, BDPartTableType type, gboolean ignore_existing, GError **error);
 

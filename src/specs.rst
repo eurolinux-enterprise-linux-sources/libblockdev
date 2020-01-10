@@ -22,6 +22,8 @@ modules as well as udisks2. It supports the following storage technologies:
 * MD RAID
 * multipath
 * DASD
+* NVDIMM namespaces
+* VDO volumes
 
 Of course some additional technologies may be supported in the future.
 

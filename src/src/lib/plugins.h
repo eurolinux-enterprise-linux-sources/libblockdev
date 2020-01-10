@@ -17,6 +17,8 @@ typedef enum {
     BD_PLUGIN_S390,
     BD_PLUGIN_PART,
     BD_PLUGIN_FS,
+    BD_PLUGIN_NVDIMM,
+    BD_PLUGIN_VDO,
     BD_PLUGIN_UNDEF
 } BDPlugin;
 
@@ -34,5 +36,6 @@ void bd_plugin_spec_free (BDPluginSpec *spec);
 gboolean bd_is_plugin_available (BDPlugin plugin);
 gchar** bd_get_available_plugin_names ();
 gchar* bd_get_plugin_soname (BDPlugin plugin);
+gchar* bd_get_plugin_name (BDPlugin plugin);
 
 #endif  /* BD_PLUGINS */

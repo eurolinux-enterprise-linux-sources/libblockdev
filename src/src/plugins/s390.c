@@ -24,10 +24,12 @@
 #include <string.h>
 #include <blockdev/utils.h>
 #include <asm/dasd.h>
-#include <s390utils/vtoc.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/ioctl.h>
 
 #include "s390.h"
-
+#include "check_deps.h"
 
 /**
  * SECTION: s390
@@ -46,6 +48,19 @@ GQuark bd_s390_error_quark (void) {
 }
 
 
+static volatile guint avail_deps = 0;
+static GMutex deps_check_lock;
+
+#define DEPS_DASDFMT 0
+#define DEPS_DASDFMT_MASK (1 << DEPS_DASDFMT)
+#define DEPS_LAST 1
+
+static UtilDep deps[DEPS_LAST] = {
+    /* dasdfmt doesn't return version info */
+    {"dasdfmt", NULL, NULL, NULL},
+};
+
+
 /**
  * bd_s390_check_deps:
  *
@@ -56,12 +71,24 @@ GQuark bd_s390_error_quark (void) {
  */
 gboolean bd_s390_check_deps () {
     GError *error = NULL;
-    /* dasdfmt doesn't return version info */
-    gboolean ret = bd_utils_check_util_version ("dasdfmt", NULL, NULL, NULL, &error);
-    if (!ret && error) {
-        g_warning("Cannot load the s390 plugin: %s" , error->message);
+    guint i = 0;
+    gboolean status = FALSE;
+    gboolean ret = TRUE;
+
+    for (i=0; i < DEPS_LAST; i++) {
+        status = bd_utils_check_util_version (deps[i].name, deps[i].version,
+                                              deps[i].ver_arg, deps[i].ver_regexp, &error);
+        if (!status)
+            g_warning ("%s", error->message);
+        else
+            g_atomic_int_or (&avail_deps, 1 << i);
         g_clear_error (&error);
+        ret = ret && status;
     }
+
+    if (!ret)
+        g_warning("Cannot load the s390 plugin");
+
     return ret;
 }
 
@@ -89,6 +116,32 @@ void bd_s390_close () {
 }
 
 /**
+ * bd_s390_is_tech_avail:
+ * @tech: the queried tech
+ * @mode: a bit mask of queried modes of operation (#BDS390TechMode) for @tech
+ * @error: (out): place to store error (details about why the @tech-@mode combination is not available)
+ *
+ * Returns: whether the @tech-@mode combination is available -- supported by the
+ *          plugin implementation and having all the runtime dependencies available
+ */
+gboolean bd_s390_is_tech_avail (BDS390Tech tech, guint64 mode, GError **error) {
+    switch (tech) {
+    case BD_S390_TECH_ZFCP:
+        /* all ZFCP-mode combinations are supported by this implementation of the
+         * plugin, nothing extra is needed */
+        return TRUE;
+    case BD_S390_TECH_DASD:
+        if (mode & BD_S390_TECH_MODE_MODIFY)
+            return check_deps (&avail_deps, DEPS_DASDFMT_MASK, deps, DEPS_LAST, &deps_check_lock, error);
+        else
+            return TRUE;
+    default:
+        g_set_error (error, BD_S390_ERROR, BD_S390_ERROR_TECH_UNAVAIL, "Unknown technology");
+        return FALSE;
+    }
+}
+
+/**
  * bd_s390_dasd_format:
  * @dasd: dasd to format
  * @extra: (allow-none) (array zero-terminated=1): extra options for the formatting (right now
@@ -96,14 +149,20 @@ void bd_s390_close () {
  * @error: (out): place to store error (if any)
  *
  * Returns: whether dasdfmt was successful or not
+ *
+ * Tech category: %BD_S390_TECH_DASD-%BD_S390_TECH_MODE_MODIFY
  */
 gboolean bd_s390_dasd_format (const gchar *dasd, const BDExtraArg **extra, GError **error) {
     gboolean rc = FALSE;
-    gchar *dev = g_strdup_printf ("/dev/%s", dasd);
-    const gchar *argv[8] = {"/sbin/dasdfmt", "-y", "-d", "cdl", "-b", "4096", dev, NULL};
+    const gchar *argv[8] = {"dasdfmt", "-y", "-d", "cdl", "-b", "4096", NULL, NULL};
+
+    if (!check_deps (&avail_deps, DEPS_DASDFMT_MASK, deps, DEPS_LAST, &deps_check_lock, error))
+        return FALSE;
+
+    argv[6] = g_strdup_printf ("/dev/%s", dasd);
 
     rc = bd_utils_exec_and_report_error (argv, extra, error);
-    g_free (dev);
+    g_free ((gchar *) argv[6]);
     return rc;
 }
 
@@ -113,6 +172,8 @@ gboolean bd_s390_dasd_format (const gchar *dasd, const BDExtraArg **extra, GErro
  * @error: (out): place to store error (if any)
  *
  * Returns: whether a dasd needs dasdfmt run against it
+ *
+ * Tech category: %BD_S390_TECH_DASD-%BD_S390_TECH_MODE_QUERY
  */
 gboolean bd_s390_dasd_needs_format (const gchar *dasd, GError **error) {
     gchar status[12];
@@ -127,7 +188,6 @@ gboolean bd_s390_dasd_needs_format (const gchar *dasd, GError **error) {
         g_set_error (error, BD_S390_ERROR, BD_S390_ERROR_DEVICE,
                      "Error checking status of device %s; device may not exist,"
                      " or status can not be read.", dasd);
-        g_clear_error (error);
         return FALSE;
     }
 
@@ -139,7 +199,6 @@ gboolean bd_s390_dasd_needs_format (const gchar *dasd, GError **error) {
     if (!rc) {
         g_set_error (error, BD_S390_ERROR, BD_S390_ERROR_DEVICE,
                      "Error checking status of device %s.", dasd);
-        g_clear_error (error);
         return FALSE;
     }
 
@@ -158,6 +217,8 @@ gboolean bd_s390_dasd_needs_format (const gchar *dasd, GError **error) {
  * @error: (out): place to store error (if any)
  *
  * Returns: whether a dasd was successfully switched online
+ *
+ * Tech category: %BD_S390_TECH_DASD-%BD_S390_TECH_MODE_MODIFY
  */
 gboolean bd_s390_dasd_online (const gchar *dasd, GError **error) {
     gboolean rc = FALSE;
@@ -165,7 +226,7 @@ gboolean bd_s390_dasd_online (const gchar *dasd, GError **error) {
     gint online = 0;
     gchar *path = NULL;
     FILE *fd = NULL;
-    const gchar *argv[4] = {"/usr/sbin/dasd_cio_free", "-d", dasd, NULL};
+    const gchar *argv[4] = {"dasd_cio_free", "-d", dasd, NULL};
     guint64 progress_id = 0;
     gchar *msg = NULL;
 
@@ -244,6 +305,8 @@ gboolean bd_s390_dasd_online (const gchar *dasd, GError **error) {
  * @error: (out): place to store error (if any)
  *
  * Returns: whether a dasd is LDL formatted
+ *
+ * Tech category: %BD_S390_TECH_DASD-%BD_S390_TECH_MODE_QUERY
  */
 gboolean bd_s390_dasd_is_ldl (const gchar *dasd, GError **error) {
     gchar *devname = NULL;
@@ -290,13 +353,8 @@ gboolean bd_s390_dasd_is_ldl (const gchar *dasd, GError **error) {
         return FALSE;
     }
 
-    /* check dasd volume label; "VOL1" is a CDL formatted DASD, won't require formatting */
-    if (dasd_info.format == DASD_FORMAT_CDL) {
-        return FALSE;
-    }
-    else {
-        return TRUE;
-    }
+    /* check dasd format */
+    return dasd_info.format == DASD_FORMAT_LDL;
 }
 
 /**
@@ -305,6 +363,8 @@ gboolean bd_s390_dasd_is_ldl (const gchar *dasd, GError **error) {
  * @error: (out): place to store error (if any)
  *
  * Returns: whether a dasd is FBA
+ *
+ * Tech category: %BD_S390_TECH_DASD-%BD_S390_TECH_MODE_QUERY
  */
 gboolean bd_s390_dasd_is_fba (const gchar *dasd, GError **error) {
     gchar *devname = NULL;
@@ -356,6 +416,8 @@ gboolean bd_s390_dasd_is_fba (const gchar *dasd, GError **error) {
  * @error: (out): place to store error (if any)
  *
  * Returns: (transfer full): a synthesized dasd or zfcp device number
+ *
+ * Tech category: always available
  */
 gchar* bd_s390_sanitize_dev_input (const gchar *dev, GError **error) {
     gchar *tok = NULL;
@@ -368,7 +430,6 @@ gchar* bd_s390_sanitize_dev_input (const gchar *dev, GError **error) {
     if ((dev == NULL) || (!*dev)) {
         g_set_error (error, BD_S390_ERROR, BD_S390_ERROR_DEVICE,
                      "Device number not specified or invalid");
-        g_clear_error (error);
         return NULL;
     }
 
@@ -409,6 +470,8 @@ gchar* bd_s390_sanitize_dev_input (const gchar *dev, GError **error) {
  * @error: (out): place to store error (if any)
  *
  * Returns: (transfer full): a synthesized zFCP WWPN
+ *
+ * Tech category: always available
  */
 gchar* bd_s390_zfcp_sanitize_wwpn_input (const gchar *wwpn, GError **error) {
     gchar *fullwwpn = NULL;
@@ -418,7 +481,6 @@ gchar* bd_s390_zfcp_sanitize_wwpn_input (const gchar *wwpn, GError **error) {
     if ((wwpn == NULL) || (!*wwpn) || (strlen(wwpn) < 2)) {
         g_set_error (error, BD_S390_ERROR, BD_S390_ERROR_DEVICE,
                      "WWPN not specified or invalid");
-        g_clear_error (error);
         return NULL;
     }
 
@@ -442,6 +504,8 @@ gchar* bd_s390_zfcp_sanitize_wwpn_input (const gchar *wwpn, GError **error) {
  * @error: (out): place to store error (if any)
  *
  * Returns: (transfer full): a synthesized zFCP LUN
+ *
+ * Tech category: always available
  */
 gchar* bd_s390_zfcp_sanitize_lun_input (const gchar *lun, GError **error) {
     gchar *lclun = NULL;
@@ -451,10 +515,9 @@ gchar* bd_s390_zfcp_sanitize_lun_input (const gchar *lun, GError **error) {
     gchar *append = NULL;
 
     /* first make sure we're not being played */
-    if ((lun == NULL) || (!*lun) || (strlen(lun) > 16)) {
+    if ((lun == NULL) || (!*lun) || (strlen(lun) > 18)) {
         g_set_error (error, BD_S390_ERROR, BD_S390_ERROR_DEVICE,
                      "LUN not specified or invalid");
-        g_clear_error (error);
         return NULL;
     }
 
@@ -510,14 +573,16 @@ gchar* bd_s390_zfcp_sanitize_lun_input (const gchar *lun, GError **error) {
  * @error: (out): place to store error (if any)
  *
  * Returns: whether a zfcp device was successfully switched online
+ *
+ * Tech category: %BD_S390_TECH_ZFCP-%BD_S390_TECH_MODE_MODIFY
  */
 gboolean bd_s390_zfcp_online (const gchar *devno, const gchar *wwpn, const gchar *lun, GError **error) {
     gboolean boolrc = FALSE;
     gint rc = 0;
     FILE *fd = NULL;
     DIR *pdfd = NULL;
-    const gchar *zfcp_cio_free[4] = {"/usr/sbin/zfcp_cio_free", "-d", devno, NULL};
-    const gchar *chccwdev[4] = {"/usr/sbin/chccwdev", "-e", devno, NULL};
+    const gchar *zfcp_cio_free[4] = {"zfcp_cio_free", "-d", devno, NULL};
+    const gchar *chccwdev[4] = {"chccwdev", "-e", devno, NULL};
 
     gchar *zfcpsysfs = "/sys/bus/ccw/drivers/zfcp";
     gchar *online = g_strdup_printf ("%s/%s/online", zfcpsysfs, devno);
@@ -688,6 +753,8 @@ gboolean bd_s390_zfcp_online (const gchar *devno, const gchar *wwpn, const gchar
  * this function becomes necessary when switching the device offline. This
  * particular sequence of actions is for some reason unnecessary when switching
  * the device offline. Chalk it up to s390x being s390x.
+ *
+ * Tech category: %BD_S390_TECH_ZFCP-%BD_S390_TECH_MODE_MODIFY
  */
 gboolean bd_s390_zfcp_scsi_offline(const gchar *devno, const gchar *wwpn, const gchar *lun, GError **error) {
     FILE *scsifd = NULL;
@@ -853,6 +920,8 @@ gboolean bd_s390_zfcp_scsi_offline(const gchar *devno, const gchar *wwpn, const 
  * @error: (out): place to store error (if any)
  *
  * Returns: whether a zfcp device was successfully switched offline
+ *
+ * Tech category: %BD_S390_TECH_ZFCP-%BD_S390_TECH_MODE_MODIFY
  */
 gboolean bd_s390_zfcp_offline (const gchar *devno, const gchar *wwpn, const gchar *lun, GError **error) {
     gboolean success = FALSE;
@@ -864,7 +933,7 @@ gboolean bd_s390_zfcp_offline (const gchar *devno, const gchar *wwpn, const gcha
     gchar *offline = NULL;
     gchar *unitrm = NULL;
     gchar *pattern = NULL;
-    const gchar *chccwdev[4] = {"/usr/sbin/chccwdev", "-d", devno, NULL};
+    const gchar *chccwdev[4] = {"chccwdev", "-d", devno, NULL};
     guint64 progress_id = 0;
     gchar *msg = NULL;
 

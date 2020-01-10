@@ -4,18 +4,71 @@ SHELL = /bin/bash
 ACLOCAL_AMFLAGS = -I m4
 DISTCHECK_CONFIGURE_FLAGS = --enable-introspection
 
+if !WITH_BTRFS
+DISTCHECK_CONFIGURE_FLAGS += --without-btrfs
+endif
+
+if !WITH_CRYPTO
+DISTCHECK_CONFIGURE_FLAGS += --without-crypto
+endif
+
+if !WITH_DM
+DISTCHECK_CONFIGURE_FLAGS += --without-dm
+endif
+
+if !WITH_LOOP
+DISTCHECK_CONFIGURE_FLAGS += --without-loop
+endif
+
+if !WITH_LVM
+DISTCHECK_CONFIGURE_FLAGS += --without-lvm
+endif
+
+if !WITH_LVM_DBUS
+DISTCHECK_CONFIGURE_FLAGS += --without-lvm-dbus
+endif
+
+if !WITH_MDRAID
+DISTCHECK_CONFIGURE_FLAGS += --without-mdraid
+endif
+
+if !WITH_MPATH
+DISTCHECK_CONFIGURE_FLAGS += --without-mpath
+endif
+
+if !WITH_NVDIMM
+DISTCHECK_CONFIGURE_FLAGS += --without-nvdimm
+endif
+
+if !WITH_SWAP
+DISTCHECK_CONFIGURE_FLAGS += --without-swap
+endif
+
+if !WITH_KBD
+DISTCHECK_CONFIGURE_FLAGS += --without-kbd
+endif
+
+if !WITH_PART
+DISTCHECK_CONFIGURE_FLAGS += --without-part
+endif
+
+if !WITH_S390
+DISTCHECK_CONFIGURE_FLAGS += --without-s390
+endif
+
+
 SUBDIRS = include src dist scripts data
 if WITH_GTK_DOC
 SUBDIRS += docs
 endif
 
-dist_noinst_DATA = features.rst roadmap.rst specs.rst LICENSE tests
+dist_noinst_DATA = features.rst specs.rst LICENSE tests
 
 MAINTAINERCLEANFILES = Makefile.in aclocal.m4 config.guess config.sub \
     configure depcomp install-sh ltmain.sh missing py-compile compile ar-lib \
     m4/*.m4
 
-LIBDIRS = src/utils/.libs:src/plugins/.libs:src/lib/.libs
+LIBDIRS = src/utils/.libs:src/plugins/.libs:src/plugins/fs/.libs:src/lib/.libs
 GIDIR = src/lib
 
 if WITH_PYTHON3
@@ -41,9 +94,11 @@ PLUGINS = btrfs \
 	lvm \
 	mdraid \
 	mpath \
+	nvdimm \
 	part \
 	s390 \
-	swap
+	swap \
+	vdo
 
 ALT_PLUGINS = lvm-dbus
 
@@ -100,18 +155,18 @@ coverage-all: all
 		$(COVERAGE) report --include="src/*" > coverage-report.log
 
 tag:
-	@TAG="$(PACKAGE_NAME)-$(PACKAGE_VERSION)-1" ; \
-	git tag -a -s -m "Tag as $$TAG" -f "$$TAG" ; \
-	echo "Tagged as $$TAG" ; \
 	TAG="$(PACKAGE_VERSION)-1" ; \
-	git tag -a -s -m "Tag as $$TAG" -f "$$TAG" ; \
+	git tag -a -s -m "Tag as $$TAG" -f "$$TAG" && \
 	echo "Tagged as $$TAG"
 
 rpmlog:
 	@cl=`grep -n %changelog dist/libblockdev.spec.in |cut -d : -f 1 |head -1` ; \
 	version_release=`tail --lines=+$$(($$cl + 1)) dist/libblockdev.spec.in|head -1|cut -d- -f2-3|sed 's/ //g'` ; \
-	git log --no-merges --pretty="format:- %s (%ae)" "$(PACKAGE_NAME)-$$version_release.." |sed -e 's/@.*)/)/' ; \
+	git log --no-merges --pretty="format:- %s (%ae)" "$$version_release.." |sed -e 's/@.*)/)/' ; \
 	echo
+
+shortlog:
+	git shortlog -r --no-merges --format="- %s" -w76,0,2 $$(git tag -l --sort=taggerdate | tail -n 1)..HEAD | sed 's/"):$"/"):\n"/g'
 
 bumpver:
 	@VERSION=`echo $(PACKAGE_VERSION)|sed -r 's/(.*)\.([0-9]+)/\1/'` ; \

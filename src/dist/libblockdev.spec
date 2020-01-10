@@ -1,3 +1,4 @@
+%define with_python2 1
 %define with_python3 1
 %define with_gtk_doc 1
 %define with_bcache 1
@@ -13,16 +14,40 @@
 %define with_kbd 1
 %define with_part 1
 %define with_fs 1
+%define with_nvdimm 1
+%define with_vdo 1
 %define with_gi 1
+%define with_escrow 1
+%define with_dmraid 1
 
-%define is_rhel 0%{?rhel} != 0
+# python2 is not available on RHEL > 7 and not needed on Fedora > 28
+%if 0%{?rhel} > 7 || 0%{?fedora} > 28 || %{with_python2} == 0
+%define with_python2 0
+%define python2_copts --without-python2
+%endif
 
-# python3 is not available on RHEL
-%if %{is_rhel}
+# python3 is not available on older RHEL
+%if (! 0%{?fedora} && 0%{?rhel} <= 7) || %{with_python3} == 0
 %define with_python3 0
+%define python3_copts  --without-python3
+%endif
+
+# bcache is not available on older RHEL
+%if (! 0%{?fedora} && 0%{?rhel} <= 7) || %{with_bcache} == 0
 %define with_bcache 0
+%define bcache_copts --without-bcache
+%endif
+
+# lvm_dbus is not available on older RHEL
+%if (! 0%{?fedora} && 0%{?rhel} <= 7) || %{with_lvm_dbus} == 0
 %define with_lvm_dbus 0
-%define distro_copts --without-python3 --without-bcache --without-lvm-dbus
+%define lvm_dbus_copts --without-lvm-dbus
+%endif
+
+# vdo is not available on Fedora
+%if (0%{?fedora}) || %{with_vdo} == 0
+%define with_vdo 0
+%define vdo_copts --without-vdo
 %endif
 
 %if %{with_btrfs} != 1
@@ -30,9 +55,17 @@
 %endif
 %if %{with_crypto} != 1
 %define crypto_copts --without-crypto
+%else
+%if %{with_escrow} != 1
+%define crypto_copts --without-escrow
+%endif
 %endif
 %if %{with_dm} != 1
 %define dm_copts --without-dm
+%else
+%if %{with_dmraid} != 1
+%define dm_copts --without-dmraid
+%endif
 %endif
 %if %{with_loop} != 1
 %define loop_copts --without-loop
@@ -61,25 +94,33 @@
 %if %{with_fs} != 1
 %define fs_copts --without-fs
 %endif
+%if %{with_nvdimm} != 1
+%define nvdimm_copts --without-nvdimm
+%endif
+%if %{with_vdo} != 1
+%define vdo_copts --without-vdo
+%endif
 %if %{with_gi} != 1
 %define gi_copts --disable-introspection
 %endif
 
-%define configure_opts %{?distro_copts} %{?btrfs_copts} %{?crypto_copts} %{?dm_copts} %{?loop_copts} %{?lvm_copts} %{?lvm_dbus_copts} %{?mdraid_copts} %{?mpath_copts} %{?swap_copts} %{?kbd_copts} %{?part_copts} %{?fs_copts} %{?gi_copts}
+%define configure_opts %{?python2_copts} %{?python3_copts} %{?bcache_copts} %{?lvm_dbus_copts} %{?btrfs_copts} %{?crypto_copts} %{?dm_copts} %{?loop_copts} %{?lvm_copts} %{?lvm_dbus_copts} %{?mdraid_copts} %{?mpath_copts} %{?swap_copts} %{?kbd_copts} %{?part_copts} %{?fs_copts} %{?nvdimm_copts} %{vdo_copts} %{?gi_copts}
 
 Name:        libblockdev
-Version:     2.12
+Version:     2.18
 Release:     1%{?dist}
 Summary:     A library for low-level manipulation with block devices
 License:     LGPLv2+
 URL:         https://github.com/storaged-project/libblockdev
-Source0:     https://github.com/storaged-project/libblockdev/archive/%{name}-%{version}.tar.gz
+Source0:     https://github.com/storaged-project/libblockdev/releases/download/%{version}-%{release}/%{name}-%{version}.tar.gz
 
 BuildRequires: glib2-devel
 %if %{with_gi}
 BuildRequires: gobject-introspection-devel
 %endif
-BuildRequires: python-devel
+%if %{with_python2}
+BuildRequires: python2-devel
+%endif
 %if %{with_python3}
 BuildRequires: python3-devel
 %endif
@@ -93,7 +134,7 @@ BuildRequires: glib2-doc
 # BuildRequires: nss-tools
 
 # Needed for python 2 vs. 3 compatibility in the tests, but not used to build
-# BuildRequires: python-six
+# BuildRequires: python2-six
 # BuildRequires: python3-six
 
 %description
@@ -114,15 +155,22 @@ Requires: glib2-devel
 This package contains header files and pkg-config files needed for development
 with the libblockdev library.
 
+%if %{with_python2}
 %package -n python2-blockdev
 Summary:     Python2 gobject-introspection bindings for libblockdev
 Requires: %{name}%{?_isa} = %{version}-%{release}
+
+%if 0%{?fedora} <= 26 || 0%{?rhel} <= 7
 Requires: pygobject3-base
+%else
+Requires: python2-gobject-base
+%endif
 %{?python_provide:%python_provide python2-blockdev}
 
 %description -n python2-blockdev
 This package contains enhancements to the gobject-introspection bindings for
 libblockdev in Python2.
+%endif
 
 %if %{with_python3}
 %package -n python3-blockdev
@@ -137,6 +185,7 @@ libblockdev in Python3.
 %endif
 
 %package utils
+BuildRequires: kmod-devel
 Summary:     A library with utility functions for the libblockdev library
 
 %description utils
@@ -179,8 +228,12 @@ with the libblockdev-btrfs plugin/library.
 %if %{with_crypto}
 %package crypto
 BuildRequires: cryptsetup-devel
+
+%if %{with_escrow}
 BuildRequires: volume_key-devel >= 0.3.9-7
 BuildRequires: nss-devel
+%endif
+
 Summary:     The crypto plugin for the libblockdev library
 
 %description crypto
@@ -201,7 +254,9 @@ with the libblockdev-crypto plugin/library.
 %if %{with_dm}
 %package dm
 BuildRequires: device-mapper-devel
+%if %{with_dmraid}
 BuildRequires: dmraid-devel
+%endif
 BuildRequires: systemd-devel
 Summary:     The Device Mapper plugin for the libblockdev library
 Requires: %{name}-utils%{?_isa} >= 0.11
@@ -218,7 +273,9 @@ Requires: %{name}-dm%{?_isa} = %{version}-%{release}
 Requires: glib2-devel
 Requires: device-mapper-devel
 Requires: systemd-devel
+%if %{with_dmraid}
 Requires: dmraid-devel
+%endif
 Requires: %{name}-utils-devel%{?_isa}
 
 %description dm-devel
@@ -256,7 +313,7 @@ with the libblockdev-fs plugin/library.
 
 %if %{with_kbd}
 %package kbd
-BuildRequires: kmod-devel
+BuildRequires: libbytesize-devel
 Summary:     The KBD plugin for the libblockdev library
 Requires: %{name}-utils%{?_isa} >= 0.11
 %if %{with_bcache}
@@ -395,6 +452,29 @@ This package contains header files and pkg-config files needed for development
 with the libblockdev-mpath plugin/library.
 %endif
 
+%if %{with_nvdimm}
+%package nvdimm
+BuildRequires: ndctl-devel
+BuildRequires: libuuid-devel
+Summary:     The NVDIMM plugin for the libblockdev library
+Requires: %{name}-utils%{?_isa} >= 0.11
+Requires: ndctl
+
+%description nvdimm
+The libblockdev library plugin (and in the same time a standalone library)
+providing the functionality related to operations with NVDIMM devices.
+
+%package nvdimm-devel
+Summary:     Development files for the libblockdev-nvdimm plugin/library
+Requires: %{name}-nvdimm%{?_isa} = %{version}-%{release}
+Requires: %{name}-utils-devel%{?_isa}
+Requires: glib2-devel
+
+%description nvdimm-devel
+This package contains header files and pkg-config files needed for development
+with the libblockdev-nvdimm plugin/library.
+%endif
+
 
 %if %{with_part}
 %package part
@@ -443,9 +523,33 @@ with the libblockdev-swap plugin/library.
 %endif
 
 
+%if %{with_vdo}
+%package vdo
+BuildRequires: libbytesize-devel
+BuildRequires: libyaml-devel
+Summary:     The vdo plugin for the libblockdev library
+Requires: %{name}-utils%{?_isa} >= 0.11
+Requires: vdo
+Requires: kmod-kvdo
+
+%description vdo
+The libblockdev library plugin (and in the same time a standalone library)
+providing the functionality related to VDO devices.
+
+%package vdo-devel
+Summary:     Development files for the libblockdev-vdo plugin/library
+Requires: %{name}-vdo%{?_isa} = %{version}-%{release}
+Requires: %{name}-utils-devel%{?_isa}
+Requires: glib2-devel
+
+%description vdo-devel
+This package contains header files and pkg-config files needed for development
+with the libblockdev-vdo plugin/library.
+%endif
+
+
 %ifarch s390 s390x
 %package s390
-BuildRequires: s390utils-devel
 Summary:    The s390 plugin for the libblockdev library
 Requires: s390utils
 
@@ -458,7 +562,6 @@ Summary:     Development files for the libblockdev-s390 plugin/library
 Requires: %{name}-s390%{?_isa} = %{version}-%{release}
 Requires: %{name}-utils-devel%{?_isa}
 Requires: glib2-devel
-Requires: s390utils-devel
 
 %description s390-devel
 This package contains header files and pkg-config files needed for development
@@ -505,12 +608,20 @@ Requires: %{name}-mdraid%{?_isa} = %{version}-%{release}
 Requires: %{name}-mpath%{?_isa} = %{version}-%{release}
 %endif
 
+%if %{with_nvdimm}
+Requires: %{name}-nvdimm%{?_isa} = %{version}-%{release}
+%endif
+
 %if %{with_part}
 Requires: %{name}-part%{?_isa} = %{version}-%{release}
 %endif
 
 %if %{with_swap}
 Requires: %{name}-swap%{?_isa} = %{version}-%{release}
+%endif
+
+%if %{with_vdo}
+Requires: %{name}-vdo%{?_isa} = %{version}-%{release}
 %endif
 
 %ifarch s390 s390x
@@ -533,74 +644,67 @@ A meta-package that pulls all the libblockdev plugins as dependencies.
 find %{buildroot} -type f -name "*.la" | xargs %{__rm}
 
 
-%post -p /sbin/ldconfig
-%postun -p /sbin/ldconfig
-%post utils -p /sbin/ldconfig
-%postun utils -p /sbin/ldconfig
+%ldconfig_scriptlets
+%ldconfig_scriptlets utils
 
 %if %{with_btrfs}
-%post btrfs -p /sbin/ldconfig
-%postun btrfs -p /sbin/ldconfig
+%ldconfig_scriptlets btrfs
 %endif
 
 %if %{with_crypto}
-%post crypto -p /sbin/ldconfig
-%postun crypto -p /sbin/ldconfig
+%ldconfig_scriptlets crypto
 %endif
 
 %if %{with_dm}
-%post dm -p /sbin/ldconfig
-%postun dm -p /sbin/ldconfig
+%ldconfig_scriptlets dm
 %endif
 
 %if %{with_fs}
-%post fs -p /sbin/ldconfig
-%postun fs -p /sbin/ldconfig
+%ldconfig_scriptlets fs
 %endif
 
 %if %{with_loop}
-%post loop -p /sbin/ldconfig
-%postun loop -p /sbin/ldconfig
+%ldconfig_scriptlets loop
 %endif
 
 %if %{with_lvm}
-%post lvm -p /sbin/ldconfig
-%postun lvm -p /sbin/ldconfig
+%ldconfig_scriptlets lvm
 %endif
 
 %if %{with_lvm_dbus}
-%post lvm-dbus -p /sbin/ldconfig
-%postun lvm-dbus -p /sbin/ldconfig
+%ldconfig_scriptlets lvm-dbus
 %endif
 
 %if %{with_mdraid}
-%post mdraid -p /sbin/ldconfig
-%postun mdraid -p /sbin/ldconfig
+%ldconfig_scriptlets mdraid
 %endif
 
 %if %{with_mpath}
-%post mpath -p /sbin/ldconfig
-%postun mpath -p /sbin/ldconfig
+%ldconfig_scriptlets mpath
+%endif
+
+%if %{with_nvdimm}
+%ldconfig_scriptlets nvdimm
 %endif
 
 %if %{with_part}
-%post part -p /sbin/ldconfig
-%postun part -p /sbin/ldconfig
+%ldconfig_scriptlets part
 %endif
 
 %if %{with_swap}
-%post swap -p /sbin/ldconfig
-%postun swap -p /sbin/ldconfig
+%ldconfig_scriptlets swap
+%endif
+
+%if %{with_vdo}
+%ldconfig_scriptlets vdo
 %endif
 
 %ifarch s390 s390x
-%post s390 -p /sbin/ldconfig
-%postun s390 -p /sbin/ldconfig
+%ldconfig_scriptlets s390
 %endif
 
 %if %{with_kbd}
-%post kbd -p /sbin/ldconfig
-%postun kbd -p /sbin/ldconfig
+%ldconfig_scriptlets kbd
 %endif
 
 
@@ -629,8 +733,10 @@ find %{buildroot} -type f -name "*.la" | xargs %{__rm}
 %{_datadir}/gir*/BlockDev*.gir
 %endif
 
+%if %{with_python2}
 %files -n python2-blockdev
 %{python2_sitearch}/gi/overrides/*
+%endif
 
 %if %{with_python3}
 %files -n python3-blockdev
@@ -645,12 +751,14 @@ find %{buildroot} -type f -name "*.la" | xargs %{__rm}
 %files utils-devel
 %{_libdir}/libbd_utils.so
 %{_libdir}/libbd_part_err.so
+%{_libdir}/pkgconfig/blockdev-utils.pc
 %dir %{_includedir}/blockdev
 %{_includedir}/blockdev/utils.h
 %{_includedir}/blockdev/sizes.h
 %{_includedir}/blockdev/exec.h
 %{_includedir}/blockdev/extra_arg.h
 %{_includedir}/blockdev/dev_utils.h
+%{_includedir}/blockdev/module.h
 
 
 %if %{with_btrfs}
@@ -693,7 +801,9 @@ find %{buildroot} -type f -name "*.la" | xargs %{__rm}
 %files fs-devel
 %{_libdir}/libbd_fs.so
 %dir %{_includedir}/blockdev
+%dir %{_includedir}/blockdev/fs
 %{_includedir}/blockdev/fs.h
+%{_includedir}/blockdev/fs/*.h
 %endif
 
 
@@ -764,6 +874,17 @@ find %{buildroot} -type f -name "*.la" | xargs %{__rm}
 %endif
 
 
+%if %{with_nvdimm}
+%files nvdimm
+%{_libdir}/libbd_nvdimm.so.*
+
+%files nvdimm-devel
+%{_libdir}/libbd_nvdimm.so
+%dir %{_includedir}/blockdev
+%{_includedir}/blockdev/nvdimm.h
+%endif
+
+
 %if %{with_part}
 %files part
 %{_libdir}/libbd_part.so.*
@@ -786,6 +907,17 @@ find %{buildroot} -type f -name "*.la" | xargs %{__rm}
 %endif
 
 
+%if %{with_vdo}
+%files vdo
+%{_libdir}/libbd_vdo.so.*
+
+%files vdo-devel
+%{_libdir}/libbd_vdo.so
+%dir %{_includedir}/blockdev
+%{_includedir}/blockdev/vdo.h
+%endif
+
+
 %ifarch s390 s390x
 %files s390
 %{_libdir}/libbd_s390.so.*
@@ -799,6 +931,187 @@ find %{buildroot} -type f -name "*.la" | xargs %{__rm}
 %files plugins-all
 
 %changelog
+* Wed Jun 20 2018 Vojtech Trefny <vtrefny@redhat.com> - 2.18-1
+- Add VDO to features.rst (vtrefny)
+- Remove roadmap.rst (vtrefny)
+- vdo: Add tests for bd_vdo_grow_physical() (tbzatek)
+- Do not try to build VDO plugin on Fedora (vtrefny)
+- Introduce reporting function per thread (kailueke)
+- vdo: Implement bd_vdo_grow_physical() (tbzatek)
+- Correct arguments for ext4 repair with progress (kailueke)
+- Clarify that checking an RW-mounted XFS file system is impossible (v.podzimek)
+- vdo: Resolve real device file path (tbzatek)
+- Adjust to new NVDIMM namespace modes (vtrefny)
+- Use xfs_repair instead of xfs_db in bd_fs_xfs_check() (v.podzimek)
+- Allow compiling libblockdev without libdmraid (vtrefny)
+- Only require plugins we really need in LVM dbus tests (vtrefny)
+- Add tests for VDO plugin (vtrefny)
+- Add decimal units definition to utils/sizes.h (vtrefny)
+- Add basic VDO plugin functionality (vtrefny)
+- Add the VDO plugin (vtrefny)
+- Always check for error when (un)mounting (vtrefny)
+- Fix off-by-one error when counting TCRYPT keyfiles (segfault)
+- Add 'bd_dm_is_tech_avail' to header file (vtrefny)
+- Fix release number in NEWS.rst (vtrefny)
+- Update specs.rst and features.rst (vtrefny)
+
+* Tue Apr 24 2018 Vojtech Trefny <vtrefny@redhat.com> - 2.17-1
+- Redirect cryptsetup log to libblockdev log (vtrefny)
+- Add a generic logging function for libblockdev (vtrefny)
+- Add functions to resize LUKS 2 (vtrefny)
+- Add function to get information about LUKS 2 integrity devices (vtrefny)
+- Add function to get information about a LUKS device (vtrefny)
+- Add a basic test for creating LUKS 2 format (vtrefny)
+- Use libblockdev function to create LUKS 2 in tests (vtrefny)
+- Add support for creating LUKS 2 format (vtrefny)
+- Skip bcache tests on Rawhide (vtrefny)
+- Allow building libblockdev without Python 2 support (vtrefny)
+- Allow compiling libblockdev crypto plugin without escrow support (vtrefny)
+- Require at least libndctl 58.4 (vtrefny)
+- New function for luks metadata size (japokorn)
+- Add functions to backup and restore LUKS header (vtrefny)
+- Add function for killing keyslot on a LUKS device (vtrefny)
+- Add functions to suspend and resume a LUKS device (vtrefny)
+- Use '=' instead of '==' to compare using 'test' (v.podzimek)
+- lvm-dbus: Check returned job object for error (vtrefny)
+- Get sector size for non-block NVDIMM namespaces too (vtrefny)
+- Fix memory leaks discovered by clang (vtrefny)
+- Add new functions to docs/libblockdev-sections.txt (segfault)
+- Make a link point to the relevant section (segfault)
+- Don't use VeraCrypt PIM if compiled against libcryptsetup < 2.0 (segfault)
+- Make keyfiles parameter to bd_crypto_tc_open_full zero terminated (segfault)
+- Add function bd_crypto_device_seems_encrypted (segfault)
+- Support VeraCrypt PIM (segfault)
+- Support TCRYPT system volumes (segfault)
+- Support TCRYPT hidden containers (segfault)
+- Support TCRYPT keyfiles (segfault)
+- Support unlocking VeraCrypt volumes (segfault)
+- Enforce ZERO_INIT gcc backwards compatibility (bjornpagen)
+- Add function for getting NVDIMM namespace name from devname or path (vtrefny)
+- Add --without-xyz to DISTCHECK_CONFIGURE_FLAGS for disabled plugins (vtrefny)
+- Add tests for the NVDIMM plugin (vtrefny)
+- Add the NVDIMM plugin (vtrefny)
+- Fix build with clang (bjornpagen)
+- s390: don't hardcode paths, search PATH (flokli)
+- Fix build against musl libc (bjornpagen)
+- Fix python2-gobject-base dependency on Fedora 26 and older (vtrefny)
+- Sync the spec file with downstream (vtrefny)
+
+* Thu Feb 08 2018 Vojtech Trefny <vtrefny@redhat.com> - 2.16-1
+- Add tests for progress report (jtulak)
+- Add e2fsck progress (jtulak)
+- Add progress reporting infrastructure for Ext fsck (jtulak)
+- Add a function to test if prog. reporting was initialized (jtulak)
+- Add support for LUKS 2 opening and key management (vtrefny)
+- Fix few more links for project and documentation website (vtrefny)
+- Sync the spec file with downstream (vpodzime)
+- Check if 'journalctl' is available before trying to use it in tests (vtrefny)
+- Update 'Testing libblockdev' section in documentation (vtrefny)
+- Fix link to online documentation (vtrefny)
+- Fix how the new kernel module functions are added to docs (vpodzime)
+
+* Wed Feb 07 2018 Fedora Release Engineering <releng@fedoraproject.org> - 2.15-4
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_28_Mass_Rebuild
+
+* Wed Feb 07 2018 Iryna Shcherbina <ishcherb@redhat.com> - 2.15-3
+- Update Python 2 dependency declarations to new packaging standards
+  (See https://fedoraproject.org/wiki/FinalizingFedoraSwitchtoPython3)
+
+* Sat Feb 03 2018 Igor Gnatenko <ignatenkobrain@fedoraproject.org> - 2.15-2
+- Switch to %%ldconfig_scriptlets
+
+* Fri Dec 01 2017 Vratislav Podzimek <vpodzime@redhat.com> - 2.15-1
+- Do not use the 'btrfs' plugin in overrides tests (vpodzime)
+- Do not use the btrfs plugin in library tests (vpodzime)
+- Check for btrfs module availability in btrfs module (vtrefny)
+- Move kernel modules (un)loading and checking into utils (vtrefny)
+- Free locale struct in kbd plugin (vtrefny)
+- Add test for setting partition flags on GPT (vtrefny)
+- Use only sgdisk to set flags on GPT (vtrefny)
+- Move the fs.h file to its original place (vpodzime)
+- Add a HACKING.rst file (vpodzime)
+- Mark bcache tests as unstable (vpodzime)
+- Fix memory leaks in bd_fs_vfat_get_info() (vpodzime)
+- Revert the behaviour of bd_fs_check_deps() (vpodzime)
+- Split the bd_fs_is_tech_avail() implementation (vpodzime)
+- Split the FS plugin source into multiple files (vpodzime)
+- Fix bd_s390_dasd_format (vponcova)
+- Mark unstable tests as such (vpodzime)
+- bd_s390_dasd_is_ldl should be true only for LDL DADSs (vponcova)
+- Do not lie about tag creation (vpodzime)
+
+* Wed Nov 08 2017 Zbigniew Jędrzejewski-Szmek <zbyszek@in.waw.pl> - 2.14-2
+- Rebuild for cryptsetup-2.0.0
+
+* Tue Oct 31 2017 Vratislav Podzimek <vpodzime@redhat.com> - 2.14-1
+- Support the legacy boot GPT flag (intrigeri)
+- Respect the version in the blockdev.pc file (vpodzime)
+- Add pkgconfig definitions for the utils library (vpodzime)
+- fs.c: Fix potential NULL pointer dereference (vtrefny)
+- dm.c: Fix uninitialized values in various dm plugin functions (vtrefny)
+- dm.c: Check return values of dm_task_set_name/run/get_info functions (vtrefny)
+- fs.c: Fix multiple "forward NULL" warnings in 'bd_fs_ntfs_get_info' (vtrefny)
+- lvm-dbus.c: Fix multiple "use after free" coverity warnings (vtrefny)
+- Fix duplicate 'const' in generated functions (vtrefny)
+- Add some test cases for NTFS (kailueke)
+- Add function wrappers for NTFS tools (kailueke)
+- exec.c: Fix error message in 'bd_utils_exec_and_report_progress' (vtrefny)
+- crypto.c: Fix waiting for enough entropy (vtrefny)
+- Ignore some coverity false positive errors (vtrefny)
+- exec.c: Ignore errors from 'g_io_channel_shutdown' (vtrefny)
+- part.c: Check if we've found a place to put new logical partitions (vtrefny)
+- kbd.c: Fix potential string overflow in 'bd_kbd_bcache_create' (vtrefny)
+- exec.c: Fix resource leaks in 'bd_utils_exec_and_report_progress' (vtrefny)
+- fs.c: Fix "forward null" in 'do_mount' and 'bd_fs_xfs_get_info' (vtrefny)
+- part.c: Fix possible NULL pointer dereference (vtrefny)
+- crypto.c: Use right key buffer in 'bd_crypto_luks_add_key' (vtrefny)
+- exec.c: Fix "use after free" in 'bd_utils_check_util_version' (vtrefny)
+- kbd.c: Fix double free in 'bd_kbd_zram_get_stats' (vtrefny)
+- part.c: Check if file discriptor is >= 0 before closing it (vtrefny)
+- mdraid.c: Fix resource leaks (vtrefny)
+- lvm.c: Fix "use after free" in 'bd_lvm_get_thpool_meta_size' (vtrefny)
+- fs.c: Fix for loop condition in 'bd_fs_get_fstype' (vtrefny)
+- fs.c: Check sscanf return value in 'bd_fs_vfat_get_info' (vtrefny)
+- fs.c: Fix resource leaks in 'bd_fs_get_fstype' (vtrefny)
+- blockdev.c.in: Fix unused variables (vtrefny)
+- Use libbytesize to parse bcache block size (vtrefny)
+- Use system values in KbdTestBcacheStatusTest (vtrefny)
+- Fix BSSize memory leaks in btrfs and mdraid plugins (vtrefny)
+- Skip btrfs subvolume tests with btrfs-progs 4.13.2 (vtrefny)
+- Added function to get DM device subsystem (japokorn)
+- Sync spec with downstream (vpodzime)
+
+* Fri Sep 29 2017 Vratislav Podzimek <vpodzime@redhat.com> - 2.13-1
+- Fix the rpmlog and shortlog targets (vpodzime)
+- Add a function for enabling/disabling plugins' init checks (vpodzime)
+- Assign functions to tech-mode categories (vpodzime)
+- Add missing items to particular sections in the documentation (vpodzime)
+- Add a basic test for the runtime dependency checking (vpodzime)
+- Simplify what WITH_BD_BCACHE changes in the KBD plugin (vpodzime)
+- Add functions for querying available technologies (vpodzime)
+- Dynamically check for the required utilities (vpodzime)
+- Use shorter prefix for tempfiles (vtrefny)
+- Try harder when waiting for lio device to show up (vtrefny)
+- Better handle old and new zram sysfs api in tests (vtrefny)
+- Skip btrfs tests on CentOS 7 aarch64 (vtrefny)
+- Add new function for setting swap label (vtrefny)
+- Use only one git tag for new releases (vtrefny)
+- Fix source URL in spec file (vtrefny)
+- Add NEWS.rst file (vtrefny)
+- Do not include s390utils/vtoc.h in s390 plugin (vtrefny)
+- Use "AC_CANONICAL_BUILD" to check architecture instead of "uname" (vtrefny)
+- Bypass error proxy in s390 test (vtrefny)
+- Fix zFCP LUN max length (vtrefny)
+- Do not run g_clear_error after setting it (vtrefny)
+- Allow compiling libblockdev without s390 plugin (vtrefny)
+- Add a function for getting plugin name (vpodzime)
+
+* Thu Sep 28 2017 Troy Dawson <tdawson@redhat.com> - 2.12-3
+- Cleanup spec file conditionals correctly
+
+* Wed Sep 27 2017 Troy Dawson <tdawson@redhat.com> - 2.12-2
+- Cleanup spec file conditionals
+
 * Wed Aug 30 2017 Vratislav Podzimek <vpodzime@redhat.com> - 2.12-1
 - Own directories /etc/libblockdev and /etc/libblockdev/conf.d (vtrefny)
 - Wait for resized partition (kailueke)

@@ -30,12 +30,14 @@ GIHEADERS = ${builddir}/plugin_apis/kbd.h \
 	${builddir}/plugin_apis/loop.h \
 	${builddir}/plugin_apis/mpath.h \
 	${builddir}/plugin_apis/part.h \
-	${builddir}/plugin_apis/fs.h
+	${builddir}/plugin_apis/fs.h \
+	${builddir}/plugin_apis/nvdimm.h \
+	${builddir}/plugin_apis/vdo.h
 
 GIHEADERS += $(wildcard ${srcdir}/../utils/*.[ch])
 GIHEADERS += blockdev.c blockdev.h plugins.c plugins.h
 
-if ON_S390
+if WITH_S390
 GIHEADERS += ${builddir}/plugin_apis/s390.h
 endif
 

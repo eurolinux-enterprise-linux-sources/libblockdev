@@ -1,6 +1,6 @@
 # configure.ac for libblockdev
 
-AC_INIT([libblockdev], [2.12], [vpodzime@redhat.com])
+AC_INIT([libblockdev], [2.18], [vpodzime@redhat.com])
 
 # Disable building static libraries.
 # This needs to be set before initializing automake
@@ -18,7 +18,9 @@ LT_INIT
 
 AC_CONFIG_FILES([Makefile src/Makefile \
                           src/plugins/Makefile \
+                          src/plugins/fs/Makefile \
                           src/utils/Makefile \
+                          src/utils/blockdev-utils.pc \
                           src/lib/Makefile \
                           src/lib/plugin_apis/Makefile \
                           src/lib/blockdev.c \
@@ -44,12 +46,50 @@ AS_IF([test "x$found_introspection" = xyes],
       [AC_SUBST(WITH_GI, 1)],
       [AC_SUBST(WITH_GI, 0)])
 
-uname -p|grep s390
-on_s390=$?
-
-AM_CONDITIONAL(ON_S390, test "$on_s390" = "0")
+AC_CANONICAL_HOST
+case $host_cpu in
+  s390|s390x) on_s390=yes ;;
+  *) on_s390=no ;;
+esac
 
 skip_patterns=""
+
+AC_ARG_WITH([s390],
+    AS_HELP_STRING([--with-s390], [support s390 @<:@default=check@:>@]),
+    [],
+    [with_s390=check])
+
+AC_SUBST(WITH_S390, 0)
+if test "x$with_s390" != "xno"; then
+    AS_IF([test "x$on_s390" = "xno" -a "x$with_s390" = "xyes"],
+           [LIBBLOCKDEV_SOFT_FAILURE([s390 support requested, but not on s390 arch])
+            AM_CONDITIONAL(WITH_S390, false)],
+          [test "x$on_s390" == "xyes" -a "x$with_s390" != "xno"],
+           [AC_SUBST(WITH_S390, 1)
+            AM_CONDITIONAL(WITH_S390, true)
+           ],
+          [AC_SUBST(WITH_S390, 0)
+           AM_CONDITIONAL(WITH_S390, false)
+          ])
+else
+  AM_CONDITIONAL(WITH_S390, false)
+fi
+
+AC_ARG_WITH([python2],
+    AS_HELP_STRING([--with-python2], [support python2 @<:@default=check@:>@]),
+    [],
+    [with_python2=check])
+
+AC_SUBST(WITH_PYTHON2, 0)
+if test "x$with_python2" != "xno"; then
+    AC_PATH_PROG([python2], [python2], [no])
+    AS_IF([test "x$python2" == "xno"],
+    [if test "x$with_python2" = "xyes"; then
+      LIBBLOCKDEV_SOFT_FAILURE([Python2 support requested, but python2 is not available])
+      fi],
+    [AC_SUBST(WITH_PYTHON2, 1)])
+fi
+AM_CONDITIONAL(WITH_PYTHON2, test "x$with_python2" != "xno" -a "x$python2" != "xno")
 
 AC_ARG_WITH([python3],
     AS_HELP_STRING([--with-python3], [support python3 @<:@default=check@:>@]),
@@ -102,8 +142,30 @@ AC_ARG_WITH([bcache],
 AC_SUBST([WITH_BCACHE], [0])
 AM_CONDITIONAL(WITH_BCACHE, test "x$with_bcache" != "xno")
 AS_IF([test "x$with_bcache" != "xno"],
-      [AC_DEFINE([WITH_BD_BCACHE], [], [Define if bcache is supported]) AC_SUBST([WITH_BCACHE], [1]) AC_SUBST([WITH_BCACHE_CFLAGS], [-DWITH_BD_BCACHE])],
-      [skip_patterns="$skip_patterns bcache"])
+      [AC_DEFINE([WITH_BD_BCACHE], [], [Define if bcache is supported]) AC_SUBST([WITH_BCACHE], [1])],
+      [])
+
+AC_ARG_WITH([escrow],
+    AS_HELP_STRING([--with-escrow], [support escrow @<:@default=yes@:>@]),
+    [],
+    [with_escrow=yes])
+
+AC_SUBST([WITH_ESCROW], [0])
+AM_CONDITIONAL(WITH_ESCROW, test "x$with_escrow" != "xno")
+AS_IF([test "x$with_escrow" != "xno"],
+      [AC_DEFINE([WITH_BD_ESCROW], [], [Define if escrow is supported]) AC_SUBST([WITH_ESCROW], [1])],
+      [])
+
+AC_ARG_WITH([dmraid],
+    AS_HELP_STRING([--with-dmraid], [support dmraid @<:@default=yes@:>@]),
+    [],
+    [with_dmraid=yes])
+
+AC_SUBST([WITH_DMRAID], [0])
+AM_CONDITIONAL(WITH_DMRAID, test "x$with_dmraid" != "xno")
+AS_IF([test "x$with_dmraid" != "xno"],
+      [AC_DEFINE([WITH_BD_DMRAID], [], [Define if dmraid is supported]) AC_SUBST([WITH_DMRAID], [1])],
+      [])
 
 LIBBLOCKDEV_PLUGIN([BTRFS], [btrfs])
 LIBBLOCKDEV_PLUGIN([CRYPTO], [crypto])
@@ -117,6 +179,8 @@ LIBBLOCKDEV_PLUGIN([SWAP], [swap])
 LIBBLOCKDEV_PLUGIN([KBD], [kbd])
 LIBBLOCKDEV_PLUGIN([PART], [part])
 LIBBLOCKDEV_PLUGIN([FS], [fs])
+LIBBLOCKDEV_PLUGIN([NVDIMM], [nvdimm])
+LIBBLOCKDEV_PLUGIN([VDO], [vdo])
 
 AM_CONDITIONAL(WITH_PART_O_WITH_FS, test "x$with_part" != "xno" -o "x$with_fs" != "xno")
 
@@ -125,11 +189,16 @@ LIBBLOCKDEV_PKG_CHECK_MODULES([GLIB], [glib-2.0 >= 2.42.2])
 LIBBLOCKDEV_PKG_CHECK_MODULES([GOBJECT], [gobject-2.0 >= 2.42.2])
 LIBBLOCKDEV_PKG_CHECK_MODULES([GIO], [gio-2.0 >= 2.42.2])
 LIBBLOCKDEV_PKG_CHECK_MODULES([UDEV], [libudev >= 216])
+LIBBLOCKDEV_PKG_CHECK_MODULES([KMOD], [libkmod >= 19])
 
 AS_IF([test "x$with_crypto" != "xno"],
       [LIBBLOCKDEV_PKG_CHECK_MODULES([CRYPTSETUP], [libcryptsetup >= 1.6.7])
-       LIBBLOCKDEV_PKG_CHECK_MODULES([NSS], [nss >= 3.18.0])
-       LIBBLOCKDEV_CHECK_HEADER([volume_key/libvolume_key.h], [$GLIB_CFLAGS $NSS_CFLAGS], [libvolume_key.h not available])
+      AS_IF([$PKG_CONFIG --atleast-version=2.0 libcryptsetup],
+            [AC_DEFINE([LIBCRYPTSETUP_2])], [])
+      AS_IF([test "x$with_escrow" != "xno"],
+            [LIBBLOCKDEV_PKG_CHECK_MODULES([NSS], [nss >= 3.18.0])
+             LIBBLOCKDEV_CHECK_HEADER([volume_key/libvolume_key.h], [$GLIB_CFLAGS $NSS_CFLAGS], [libvolume_key.h not available])],
+            [])
       ],
       [])
 
@@ -137,14 +206,9 @@ AS_IF([test "x$with_dm" != "xno" -o "x$with_lvm" != "xno" -o "x$with_lvm_dbus" !
       [LIBBLOCKDEV_PKG_CHECK_MODULES([DEVMAPPER], [devmapper >= 1.02.93])],
       [])
 
-AS_IF([test "x$with_dm" != "xno"],
+AS_IF([test "x$with_dm" != "xno" -a "x$with_dmraid" != "xno"],
       [LIBBLOCKDEV_CHECK_HEADER([dmraid/dmraid.h], [], [dmraid.h not available])],
       [])
-
-AS_IF([test "x$with_kbd" != "xno"],
-      [LIBBLOCKDEV_PKG_CHECK_MODULES([KMOD], [libkmod >= 19])],
-      [])
-
 
 AS_IF([test "x$with_part" != "xno" -o "x$with_fs" != "xno"],
       [LIBBLOCKDEV_PKG_CHECK_MODULES([PARTED], [libparted >= 3.1])]
@@ -170,8 +234,20 @@ AS_IF([test "x$with_fs" != "xno"],
               AC_SUBST([PARTED_FS_CFLAGS], [])])],
       [])
 
-AS_IF([test "x$with_btrfs" != "xno" -o "x$with_mdraid" != "xno"],
+AS_IF([test "x$with_btrfs" != "xno" -o "x$with_mdraid" != "xno" -o "x$with_kbd" != "xno" -o "x$with_vdo" != "xno"],
       [LIBBLOCKDEV_PKG_CHECK_MODULES([BYTESIZE], [bytesize >= 0.1])],
+      [])
+
+AS_IF([test "x$with_nvdimm" != "xno"],
+      [LIBBLOCKDEV_PKG_CHECK_MODULES([UUID], [uuid])
+       LIBBLOCKDEV_PKG_CHECK_MODULES([NDCTL], [libndctl >= 58.4])
+       # new versions of libndctl new modes
+       AS_IF([$PKG_CONFIG --atleast-version=60 libndctl],
+             [AC_DEFINE([LIBNDCTL_NEW_MODES])], [])]
+      [])
+
+AS_IF([test "x$with_vdo" != "xno"],
+      [LIBBLOCKDEV_PKG_CHECK_MODULES([YAML], [yaml-0.1])]
       [])
 
 AC_SUBST([skip_patterns], [$skip_patterns])

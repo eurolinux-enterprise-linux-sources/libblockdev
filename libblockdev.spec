@@ -114,11 +114,12 @@
 
 Name:        libblockdev
 Version:     2.18
-Release:     3%{?dist}
+Release:     4%{?dist}
 Summary:     A library for low-level manipulation with block devices
 License:     LGPLv2+
 URL:         https://github.com/storaged-project/libblockdev
 Source0:     https://github.com/storaged-project/libblockdev/releases/download/%{version}-%{release}/%{name}-%{version}.tar.gz
+Patch0:      0001-Do-not-try-to-use-keyring-on-systems-without-keyring-support.patch
 
 BuildRequires: glib2-devel
 %if %{with_gi}
@@ -645,6 +646,7 @@ A meta-package that pulls all the libblockdev plugins as dependencies.
 
 %prep
 %setup -q -n %{name}-%{version}
+%patch0 -p1
 
 %build
 %configure %{?configure_opts}
@@ -960,6 +962,10 @@ find %{buildroot} -type f -name "*.la" | xargs %{__rm}
 %files plugins-all
 
 %changelog
+* Thu Feb 21 2019 Vojtech Trefny <vtrefny@redhat.com> - 2.18-4
+- Do not try to use keyring on systems without keyring support
+  Resolves: rhbz#1661160
+
 * Tue Jul 24 2018 Vojtech Trefny <vtrefny@redhat.com> - 2.18-3
 - Rebuild with new libcryptsetup.so.12
   Resolves: rhbz#1593854
